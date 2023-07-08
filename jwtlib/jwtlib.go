@@ -1,6 +1,7 @@
 package jwtlib
 
 import (
+	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt"
@@ -25,6 +26,14 @@ func New(cfg Config) *JWT {
 }
 
 func (j *JWT) GenerateToken(subject string, expiration time.Time, notBefore time.Time) (string, error) {
+	if j.SecretKey == "" {
+		return "", errors.New("secret key is empty, define secured secret key")
+	}
+
+	if expiration.Before(time.Now()) {
+		return "", errors.New("expiration cannot be anterior to the current time")
+	}
+
 	claims := jwt.MapClaims{
 		"sub": subject,
 		"exp": expiration.Unix(),
@@ -39,22 +48,29 @@ func (j *JWT) GenerateToken(subject string, expiration time.Time, notBefore time
 }
 
 func (j *JWT) VerifyToken(tokenString string) (jwt.MapClaims, error) {
+	// Parse the token and validate the signing method
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, jwt.ErrSignatureInvalid
 		}
 		return []byte(j.SecretKey), nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok || !token.Valid {
-		return nil, jwt.NewValidationError("invalid token", jwt.ValidationErrorClaimsInvalid)
+	// Verify token signature
+	if !token.Valid {
+		return nil, jwt.NewValidationError("invalid token signature", jwt.ValidationErrorSignatureInvalid)
 	}
 
+	// Extract claims from token
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, jwt.NewValidationError("invalid claims", jwt.ValidationErrorClaimsInvalid)
+	}
+
+	// Validate expiration claim
 	err = claims.Valid()
 	if err != nil {
 		return nil, err

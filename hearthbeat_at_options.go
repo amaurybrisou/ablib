@@ -200,7 +200,7 @@ func (m *heartBeatAt) runTicker(ctx context.Context, ticker *localTicker) {
 		log.Ctx(ctx).Debug().Msgf("service %s ticker stopped", ticker.service.GetID())
 	}()
 
-	log.Ctx(ctx).Debug().Msgf("service %s created", ticker.service.GetID())
+	log.Ctx(ctx).Debug().Msgf("service %s ticker created", ticker.service.GetID())
 
 	wg := sync.WaitGroup{}
 
