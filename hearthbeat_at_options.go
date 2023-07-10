@@ -169,7 +169,7 @@ func (m *heartBeatAt) updateTickers(ctx context.Context, services []Service) {
 
 	for _, ticker := range serviceTickers {
 		service, ok := servicesMap[ticker.service.GetID()]
-		if !ok {
+		if !ok || service.GetHost() != ticker.service.GetHost() {
 			log.Ctx(ctx).Debug().Msgf("service %s ticker stop", ticker.service.GetID())
 			ticker.ticker.Stop()
 			continue
