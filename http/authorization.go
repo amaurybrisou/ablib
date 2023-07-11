@@ -1,28 +1,21 @@
-package ablibmiddleware
+package ablibhttp
 
 import (
 	"context"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
-	"github.com/amaurybrisou/ablib/jwtlib"
 	coremodels "github.com/amaurybrisou/ablib/models"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
 
-type AuthMiddlewareService struct {
-	jwt         *jwtlib.JWT
-	getUserFunc func(context.Context, uuid.UUID) (coremodels.UserInterface, error)
+type AuthMiddleware interface {
+	Middleware(next http.Handler) http.Handler
 }
 
-func NewAuthMiddleware(jwt *jwtlib.JWT, getUserFunc func(context.Context, uuid.UUID) (coremodels.UserInterface, error)) AuthMiddlewareService {
-	return AuthMiddlewareService{jwt: jwt, getUserFunc: getUserFunc}
-}
-
-func (s AuthMiddlewareService) IsAdmin(next http.Handler) http.Handler {
+func IsAdminMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		isAdmin := IsAdmin(r.Context())
 		if !isAdmin {
@@ -30,49 +23,6 @@ func (s AuthMiddlewareService) IsAdmin(next http.Handler) http.Handler {
 			http.Error(w, "Unauthorized", http.StatusForbidden)
 			return
 		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (s AuthMiddlewareService) JWTAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Get the Authorization header value
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			log.Ctx(r.Context()).Error().Err(errors.New("invalid header")).Msg("Unauthorized")
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// Extract the token from the Authorization header
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-
-		// Verify the token
-		claims, err := s.jwt.VerifyToken(token)
-		if err != nil {
-			log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		userID, err := uuid.Parse(claims["sub"].(string))
-		if err != nil {
-			log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		user, err := s.getUserFunc(r.Context(), userID)
-		if err != nil {
-			log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		ctx := createUserContext(r.Context(), user)
-		r = r.WithContext(ctx)
-
-		// Call the next handler
 		next.ServeHTTP(w, r)
 	})
 }
@@ -85,7 +35,6 @@ func createUserContext(ctx context.Context, user coremodels.UserInterface) conte
 	ctx = context.WithValue(ctx, UserFirstname, user.GetFirstname())
 	ctx = context.WithValue(ctx, UserLastname, user.GetLastname())
 	ctx = context.WithValue(ctx, UserRole, user.GetRole())
-	ctx = context.WithValue(ctx, UserStripeKey, user.GetStripeKey())
 	ctx = context.WithValue(ctx, UserCreatedAt, user.GetCreatedAt())
 	ctx = context.WithValue(ctx, UserUpdatedAt, user.GetUpdatedAt())
 	ctx = context.WithValue(ctx, UserDeletedAt, user.GetDeletedAt())
@@ -121,7 +70,6 @@ func User(ctx context.Context) coremodels.UserInterface {
 		Firstname:  ctx.Value(UserFirstname).(string),
 		Lastname:   ctx.Value(UserLastname).(string),
 		Role:       ctx.Value(UserRole).(coremodels.GatewayRole),
-		StripeKey:  ctx.Value(UserStripeKey).(*string),
 		CreatedAt:  ctx.Value(UserCreatedAt).(time.Time),
 		UpdatedAt:  ctx.Value(UserUpdatedAt).(*time.Time),
 		DeletedAt:  ctx.Value(UserDeletedAt).(*time.Time),

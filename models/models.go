@@ -17,11 +17,11 @@ type UserInterface interface {
 	GetID() uuid.UUID
 	GetExternalID() string
 	GetEmail() string
+	GetPassword() string
 	GetAvatarURL() string
 	GetFirstname() string
 	GetLastname() string
 	GetRole() GatewayRole
-	GetStripeKey() *string
 	GetCreatedAt() time.Time
 	GetUpdatedAt() *time.Time
 	GetDeletedAt() *time.Time
@@ -31,11 +31,11 @@ type User struct {
 	ID         uuid.UUID
 	ExternalID string
 	Email      string
+	Password   string
 	AvatarURL  string
 	Firstname  string
 	Lastname   string
 	Role       GatewayRole
-	StripeKey  *string
 	CreatedAt  time.Time
 	UpdatedAt  *time.Time
 	DeletedAt  *time.Time
@@ -53,6 +53,10 @@ func (u User) GetEmail() string {
 	return u.Email
 }
 
+func (u User) GetPassword() string {
+	return u.Password
+}
+
 func (u User) GetAvatarURL() string {
 	return u.AvatarURL
 }
@@ -67,10 +71,6 @@ func (u User) GetLastname() string {
 
 func (u User) GetRole() GatewayRole {
 	return u.Role
-}
-
-func (u User) GetStripeKey() *string {
-	return u.StripeKey
 }
 
 func (u User) GetCreatedAt() time.Time {
