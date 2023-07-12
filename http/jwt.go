@@ -18,7 +18,7 @@ import (
 
 type JwtAuth struct {
 	getUserByEmail func(ctx context.Context, email string) (ablibmodels.UserInterface, error)
-	getUserByID    func(context.Context, uuid.UUID) (coremodels.UserInterface, error)
+	getUserByID    func(ctx context.Context, userID uuid.UUID) (coremodels.UserInterface, error)
 	jwt            *jwtlib.JWT
 }
 
