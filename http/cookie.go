@@ -159,3 +159,47 @@ func (s CookieAuth) Middleware(successNext http.Handler) http.Handler {
 		successNext.ServeHTTP(w, r)
 	})
 }
+
+func (s CookieAuth) NonAuthoritativeMiddleware(successNext http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userIDString, err := cryptlib.GetSignedCookie(r, s.cookieName, s.secret)
+		if err != nil {
+			if s.jwt != nil {
+				JwtAuth{
+					getUserByEmail: s.getUserByEmail,
+					getUserByID:    s.getUserByID,
+					jwt:            s.jwt,
+				}.NonAuthoritativeMiddleware(successNext).ServeHTTP(w, r)
+				return
+			}
+			log.Ctx(r.Context()).Warn().
+				Err(err).
+				Any("cookie.value", userIDString).
+				Msg("user not logged in")
+			successNext.ServeHTTP(w, r)
+			return
+		}
+
+		userID, err := uuid.Parse(userIDString)
+		if err != nil {
+			log.Ctx(r.Context()).Error().
+				Err(err).
+				Any("cookie.value", userIDString).
+				Msg("Unauthorized")
+			http.Error(w, "parse cookie value", http.StatusInternalServerError)
+			return
+		}
+
+		user, err := s.getUserByID(r.Context(), userID)
+		if err != nil {
+			log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := createUserContext(r.Context(), user)
+		r = r.WithContext(ctx)
+
+		successNext.ServeHTTP(w, r)
+	})
+}

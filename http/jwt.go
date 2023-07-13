@@ -116,3 +116,46 @@ func (s JwtAuth) Middleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+func (s JwtAuth) NonAuthoritativeMiddleware(successNext http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Get the Authorization header value
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			log.Ctx(r.Context()).Warn().Err(errors.New("invalid header")).Msg("user not logged in")
+			successNext.ServeHTTP(w, r)
+			return
+		}
+
+		// Extract the token from the Authorization header
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+
+		// Verify the token
+		claims, err := s.jwt.VerifyToken(token)
+		if err != nil {
+			log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		userID, err := uuid.Parse(claims["sub"].(string))
+		if err != nil {
+			log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		user, err := s.getUserByID(r.Context(), userID)
+		if err != nil {
+			log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := createUserContext(r.Context(), user)
+		r = r.WithContext(ctx)
+
+		// Call the next handler
+		successNext.ServeHTTP(w, r)
+	})
+}
