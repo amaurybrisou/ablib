@@ -1,36 +1,32 @@
 package ablibhttp
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/amaurybrisou/ablib/cryptlib"
 	"github.com/amaurybrisou/ablib/jwtlib"
-	ablibmodels "github.com/amaurybrisou/ablib/models"
-	coremodels "github.com/amaurybrisou/ablib/models"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
 
 type JwtAuth struct {
-	getUserByEmail func(ctx context.Context, email string) (ablibmodels.UserInterface, error)
-	getUserByID    func(ctx context.Context, userID uuid.UUID) (coremodels.UserInterface, error)
-	jwt            *jwtlib.JWT
+	jwt                    *jwtlib.JWT
+	db                     AuthRepository
+	accessTokenExpiration  time.Duration
+	refreshTokenExpiration time.Duration
 }
 
-func NewJwtAuth(jwt *jwtlib.JWT,
-	getUserByEmail func(ctx context.Context, email string) (ablibmodels.UserInterface, error),
-	getUserByID func(context.Context, uuid.UUID) (coremodels.UserInterface, error),
-
-) JwtAuth {
-	return JwtAuth{
-		jwt:            jwt,
-		getUserByEmail: getUserByEmail,
-		getUserByID:    getUserByID,
+func NewJwtAuth(jwt *jwtlib.JWT, db AuthRepository) *JwtAuth {
+	return &JwtAuth{
+		jwt:                    jwt,
+		db:                     db,
+		accessTokenExpiration:  time.Minute * 5,
+		refreshTokenExpiration: time.Minute * 15,
 	}
 }
 
@@ -48,7 +44,7 @@ func (s JwtAuth) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.getUserByEmail(r.Context(), creds.Email)
+	user, err := s.db.GetUserByEmail(r.Context(), creds.Email)
 	if err != nil && !errors.Is(err, ErrUserNotFound) {
 		log.Ctx(r.Context()).Error().Err(err).Msg("internal error")
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -61,15 +57,112 @@ func (s JwtAuth) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.jwt.GenerateToken(user.GetID().String(), time.Now().Add(time.Hour), time.Now())
+	expiresAt := time.Now().Add(s.accessTokenExpiration)
+	token, err := s.jwt.GenerateToken(user.GetID().String(), expiresAt, time.Now())
 	if err != nil {
 		log.Ctx(r.Context()).Error().Err(err).Msg("failed to generate")
 		http.Error(w, "failed to generate token", http.StatusInternalServerError)
 		return
 	}
 
+	refreshToken, err := s.jwt.GenerateToken(user.GetID().String(), expiresAt.Add(s.refreshTokenExpiration), time.Now())
+	if err != nil {
+		log.Ctx(r.Context()).Error().Err(err).Msg("failed to generate")
+		http.Error(w, "failed to generate refresh token", http.StatusInternalServerError)
+		return
+	}
+
+	err = s.db.AddRefreshToken(r.Context(), user.GetID().String(), refreshToken)
+	if err != nil {
+		log.Ctx(r.Context()).Error().Err(err).Msg("failed to save refresh token")
+		http.Error(w, "failed to save refresh token", http.StatusInternalServerError)
+		return
+	}
+
+	jwtCookie := http.Cookie{
+		Name:     "jwt_refresh_token",
+		HttpOnly: true,
+		SameSite: http.SameSiteNoneMode,
+		Secure:   true,
+		MaxAge:   int(time.Hour),
+	}
+
+	err = cryptlib.SetSignedCookie(w, jwtCookie, []byte(refreshToken))
+	if err != nil {
+		log.Ctx(r.Context()).Error().Err(err).Msg("failed to generate")
+		http.Error(w, "failed to signe refresh token cookie", http.StatusInternalServerError)
+		return
+	}
 	// Return the token as the response
-	response := map[string]string{"token": token}
+	response := map[string]string{
+		"token":      token,
+		"expires_at": fmt.Sprintf("%d", expiresAt.Unix()),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response) //nolint
+}
+
+func (s JwtAuth) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	// Get the Authorization header value
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		log.Ctx(r.Context()).Error().Err(errors.New("invalid header")).Msg("Unauthorized")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Extract the accessToken from the Authorization header
+	accessToken := strings.TrimPrefix(authHeader, "Bearer ")
+
+	// Verify the token
+	claims, err := s.jwt.VerifyToken(accessToken)
+	if err != nil {
+		log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := uuid.Parse(claims["sub"].(string))
+	if err != nil {
+		log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	refreshToken, err := s.db.GetRefreshTokenByUserID(r.Context(), userID.String())
+	if err != nil {
+		log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
+		http.Error(w, "Unauthorized", http.StatusNotAcceptable)
+		return
+	}
+
+	_, err = s.jwt.VerifyToken(refreshToken)
+	if err != nil {
+		err = s.db.RemoveRefreshToken(r.Context(), userID.String())
+		if err != nil {
+			log.Ctx(r.Context()).Error().Err(err).Any("user_id", userID).Msg("removing refresh token")
+			http.Error(w, "Unauthorized", http.StatusInternalServerError)
+			return
+		}
+		log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
+		http.Error(w, "Unauthorized", http.StatusNotAcceptable)
+		return
+	}
+
+	expiresAt := time.Now().Add(s.accessTokenExpiration)
+	accessToken, err = s.jwt.GenerateToken(userID.String(), expiresAt, time.Now())
+	if err != nil {
+		log.Ctx(r.Context()).Error().Err(err).Msg("failed to generate")
+		http.Error(w, "failed to generate token", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]string{
+		"token":      accessToken,
+		"expires_at": fmt.Sprintf("%d", expiresAt.Unix()),
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response) //nolint
 }
@@ -102,7 +195,7 @@ func (s JwtAuth) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		user, err := s.getUserByID(r.Context(), userID)
+		user, err := s.db.GetUserByID(r.Context(), userID.String())
 		if err != nil {
 			log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -145,7 +238,7 @@ func (s JwtAuth) NonAuthoritativeMiddleware(successNext http.Handler) http.Handl
 			return
 		}
 
-		user, err := s.getUserByID(r.Context(), userID)
+		user, err := s.db.GetUserByID(r.Context(), userID.String())
 		if err != nil {
 			log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)

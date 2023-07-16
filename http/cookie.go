@@ -1,40 +1,35 @@
 package ablibhttp
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/amaurybrisou/ablib/cryptlib"
 	"github.com/amaurybrisou/ablib/jwtlib"
-	ablibmodels "github.com/amaurybrisou/ablib/models"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
 
 type CookieAuth struct {
-	secret         []byte
-	cookieName     string
-	jwt            *jwtlib.JWT
-	maxAge         int
-	getUserByID    func(ctx context.Context, userID uuid.UUID) (ablibmodels.UserInterface, error)
-	getUserByEmail func(ctx context.Context, email string) (ablibmodels.UserInterface, error)
+	secret     []byte
+	cookieName string
+	jwt        *jwtlib.JWT
+	jwtAuth    *JwtAuth
+	maxAge     int
+	db         AuthRepository
 }
 
-func NewCookieAuthHandler(secret, name string, maxAge int,
-	getUserByEmail func(ctx context.Context, email string) (ablibmodels.UserInterface, error),
-	getUserByID func(context.Context, uuid.UUID) (ablibmodels.UserInterface, error),
-	jwt *jwtlib.JWT,
-) CookieAuth {
+func NewCookieAuthHandler(secret, name string, maxAge int, db AuthRepository, jwt *jwtlib.JWT) CookieAuth {
 	return CookieAuth{
-		secret:         []byte(secret),
-		cookieName:     name,
-		maxAge:         maxAge,
-		getUserByEmail: getUserByEmail,
-		getUserByID:    getUserByID,
-		jwt:            jwt,
+		secret:     []byte(secret),
+		cookieName: name,
+		maxAge:     maxAge,
+		db:         db,
+		jwt:        jwt,
+		jwtAuth:    NewJwtAuth(jwt, db),
 	}
 }
 
@@ -52,7 +47,7 @@ func (s CookieAuth) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := s.getUserByEmail(r.Context(), creds.Email)
+	user, err := s.db.GetUserByEmail(r.Context(), creds.Email)
 	if err != nil && !errors.Is(err, ErrUserNotFound) {
 		log.Ctx(r.Context()).Error().Err(err).Msg("internal error")
 		http.Error(w, "internal error", http.StatusBadRequest)
@@ -83,18 +78,52 @@ func (s CookieAuth) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.jwt != nil {
-		token, err := s.jwt.GenerateToken(user.GetID().String(), time.Now().Add(time.Hour), time.Now())
+		expiresAt := time.Now().Add(time.Second * 15)
+		token, err := s.jwt.GenerateToken(user.GetID().String(), expiresAt, time.Now())
 		if err != nil {
 			log.Ctx(r.Context()).Error().Err(err).Msg("failed to generate")
 			http.Error(w, "failed to generate token", http.StatusInternalServerError)
 			return
 		}
 
+		refreshToken, err := s.jwt.GenerateToken(user.GetID().String(), expiresAt.Add(time.Minute*55), time.Now())
+		if err != nil {
+			log.Ctx(r.Context()).Error().Err(err).Msg("failed to generate")
+			http.Error(w, "failed to generate refresh token", http.StatusInternalServerError)
+			return
+		}
+
+		err = s.db.AddRefreshToken(r.Context(), user.GetID().String(), refreshToken)
+		if err != nil {
+			log.Ctx(r.Context()).Error().Err(err).Msg("failed to save refresh token")
+			http.Error(w, "failed to save refresh token", http.StatusInternalServerError)
+			return
+		}
+
+		jwtCookie := http.Cookie{
+			Name:     "jwt_refresh_token",
+			Value:    refreshToken,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteNoneMode,
+			Secure:   true,
+			MaxAge:   int(time.Hour),
+		}
+
+		err = cryptlib.SetSignedCookie(w, jwtCookie, []byte(s.jwt.SecretKey))
+		if err != nil {
+			log.Ctx(r.Context()).Error().Err(err).Msg("failed to generate")
+			http.Error(w, "failed to signe refresh token cookie", http.StatusInternalServerError)
+			return
+		}
 		// Return the token as the response
-		response := map[string]string{"token": token}
+		response := map[string]string{
+			"token":      token,
+			"expires_at": fmt.Sprintf("%d", expiresAt.Unix()),
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response) //nolint
-		return
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -110,16 +139,18 @@ func (s CookieAuth) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, cookies)
 }
 
+func (s CookieAuth) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	if s.jwt != nil {
+		s.jwtAuth.RefreshToken(w, r)
+		return
+	}
+}
 func (s CookieAuth) Middleware(successNext http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userIDString, err := cryptlib.GetSignedCookie(r, s.cookieName, s.secret)
 		if err != nil {
 			if s.jwt != nil {
-				JwtAuth{
-					getUserByEmail: s.getUserByEmail,
-					getUserByID:    s.getUserByID,
-					jwt:            s.jwt,
-				}.Middleware(successNext).ServeHTTP(w, r)
+				s.jwtAuth.Middleware(successNext).ServeHTTP(w, r)
 				return
 			}
 			log.Ctx(r.Context()).Error().
@@ -146,7 +177,7 @@ func (s CookieAuth) Middleware(successNext http.Handler) http.Handler {
 			return
 		}
 
-		user, err := s.getUserByID(r.Context(), userID)
+		user, err := s.db.GetUserByID(r.Context(), userID.String())
 		if err != nil {
 			log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -165,11 +196,8 @@ func (s CookieAuth) NonAuthoritativeMiddleware(successNext http.Handler) http.Ha
 		userIDString, err := cryptlib.GetSignedCookie(r, s.cookieName, s.secret)
 		if err != nil {
 			if s.jwt != nil {
-				JwtAuth{
-					getUserByEmail: s.getUserByEmail,
-					getUserByID:    s.getUserByID,
-					jwt:            s.jwt,
-				}.NonAuthoritativeMiddleware(successNext).ServeHTTP(w, r)
+				NewJwtAuth(s.jwt, s.db).
+					NonAuthoritativeMiddleware(successNext).ServeHTTP(w, r)
 				return
 			}
 			log.Ctx(r.Context()).Warn().
@@ -190,7 +218,7 @@ func (s CookieAuth) NonAuthoritativeMiddleware(successNext http.Handler) http.Ha
 			return
 		}
 
-		user, err := s.getUserByID(r.Context(), userID)
+		user, err := s.db.GetUserByID(r.Context(), userID.String())
 		if err != nil {
 			log.Ctx(r.Context()).Error().Err(err).Msg("Unauthorized")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
