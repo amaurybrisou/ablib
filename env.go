@@ -53,7 +53,9 @@ func LookupEnvDuration(e string, d string) (r time.Duration) {
 		log.Fatal().Err(fmt.Errorf("key %s: duration is empty", e))
 	}
 
-	tr = d
+	if tr == "" {
+		tr = d
+	}
 
 	r, err := time.ParseDuration(tr)
 	if err != nil {
