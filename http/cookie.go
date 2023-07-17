@@ -14,22 +14,23 @@ import (
 )
 
 type CookieAuth struct {
-	secret     []byte
-	cookieName string
-	jwt        *jwtlib.JWT
-	jwtAuth    *JwtAuth
-	maxAge     int
-	db         AuthRepository
+	secret                   []byte
+	cookieName, cookieDomain string
+	jwt                      *jwtlib.JWT
+	jwtAuth                  *JwtAuth
+	maxAge                   int
+	db                       AuthRepository
 }
 
-func NewCookieAuthHandler(secret, name string, maxAge int, db AuthRepository, jwt *jwtlib.JWT) CookieAuth {
+func NewCookieAuthHandler(secret, name, cookieDomain string, maxAge int, db AuthRepository, jwt *jwtlib.JWT) CookieAuth {
 	return CookieAuth{
-		secret:     []byte(secret),
-		cookieName: name,
-		maxAge:     maxAge,
-		db:         db,
-		jwt:        jwt,
-		jwtAuth:    NewJwtAuth(jwt, db),
+		secret:       []byte(secret),
+		cookieName:   name,
+		cookieDomain: cookieDomain,
+		maxAge:       maxAge,
+		db:           db,
+		jwt:          jwt,
+		jwtAuth:      NewJwtAuth(jwt, db),
 	}
 }
 
@@ -62,6 +63,7 @@ func (s CookieAuth) Login(w http.ResponseWriter, r *http.Request) {
 
 	cookie := http.Cookie{
 		Name:     s.cookieName,
+		Domain:   s.cookieDomain,
 		Value:    user.GetID().String(),
 		Path:     "/",
 		MaxAge:   s.maxAge,
@@ -105,8 +107,9 @@ func (s CookieAuth) Login(w http.ResponseWriter, r *http.Request) {
 			Value:    refreshToken,
 			Path:     "/",
 			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
+			SameSite: http.SameSiteLaxMode,
 			Secure:   true,
+			Domain:   s.cookieDomain,
 			MaxAge:   int(time.Hour),
 		}
 
