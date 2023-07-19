@@ -2,11 +2,9 @@ package mailcli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/mail"
 	"net/smtp"
-	"strings"
 )
 
 // NOTE: https://serverfault.com/questions/635139/how-to-fix-send-mail-authorization-failed-534-5-7-14
@@ -43,11 +41,6 @@ func NewMailClient(ctx context.Context, options ...MailClientOption) (*MailClien
 	// Apply options
 	for _, opt := range options {
 		opt(client)
-	}
-
-	// Validate the sender's email address
-	if err := validateEmail(client.senderEmail); err != nil {
-		return nil, err
 	}
 
 	// Configure SMTP server settings if not already configured
@@ -139,31 +132,6 @@ func (c *MailClient) SendPasswordEmail(recipientEmail, password string) error {
 		c.smtpServerAuth, c.senderEmail, []string{recipientEmail}, msg)
 	if err != nil {
 		return err
-	}
-
-	return nil
-}
-
-// validateEmail checks if the given email address is a valid Gmail address.
-func validateEmail(email string) error {
-	if email == "" {
-		return errors.New("sender's email address is required")
-	}
-
-	addr, err := mail.ParseAddress(email)
-	if err != nil {
-		return fmt.Errorf("invalid sender's email address: %w", err)
-	}
-
-	at := strings.LastIndex(addr.Address, "@")
-	var domain string
-	if at < 0 {
-		return errors.New("invalid email format")
-	}
-
-	domain = addr.Address[at+1:]
-	if addr.Address != email || domain != "gmail.com" {
-		return errors.New("only Gmail addresses are allowed")
 	}
 
 	return nil
