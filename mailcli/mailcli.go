@@ -13,29 +13,29 @@ type MailClientOption func(*MailClient)
 
 // MailClient represents a client for sending emails using Gmail.
 type MailClient struct {
-	senderEmail     string
-	senderPassword  string
-	template        string
-	gmailServer     string
-	gmailPort       int
-	smtpServer      string
-	smtpServerPort  int
-	smtpServerAuth  smtp.Auth
-	smtpServerPlain bool
+	senderEmail      string
+	smtpAuthUsername string
+	smtpDisplayName  string
+	smtpAuthPassword string
+	template         string
+	smtpServer       string
+	smtpServerPort   int
+	smtpServerAuth   smtp.Auth
+	smtpServerPlain  bool
 }
 
 // NewMailClient creates a new MailClient with the provided options.
 func NewMailClient(ctx context.Context, options ...MailClientOption) (*MailClient, error) {
 	client := &MailClient{
-		senderEmail:     "your-email@gmail.com",
-		senderPassword:  "default-password",
-		template:        "Hello, %s!\n\nYour purchased password is: %s\n\nBest regards,\nThe Password Generator",
-		gmailServer:     "smtp.gmail.com",
-		gmailPort:       587,
-		smtpServer:      "",
-		smtpServerPort:  0,
-		smtpServerAuth:  nil,
-		smtpServerPlain: false,
+		senderEmail:      "your-email@gmail.com",
+		smtpAuthUsername: "your-email@gmail.com",
+		smtpDisplayName:  "Admin",
+		smtpAuthPassword: "default-password",
+		template:         "Hello, %s!\n\nYour purchased password is: %s\n\nBest regards,\nThe Password Generator",
+		smtpServer:       "smtp.gmail.com",
+		smtpServerPort:   587,
+		smtpServerAuth:   nil,
+		smtpServerPlain:  false,
 	}
 
 	// Apply options
@@ -44,24 +44,36 @@ func NewMailClient(ctx context.Context, options ...MailClientOption) (*MailClien
 	}
 
 	// Configure SMTP server settings if not already configured
-	if client.smtpServer == "" || client.smtpServerPort == 0 {
-		if err := configureSMTPServer(client); err != nil {
-			return nil, err
-		}
+	// if client.smtpServer == "" || client.smtpServerPort == 0 {
+	if err := configureSMTPServer(client); err != nil {
+		return nil, err
 	}
+	// }
 
 	return client, nil
 }
 
 // configureSMTPServer sets up the SMTP server settings based on the Gmail server settings.
 func configureSMTPServer(client *MailClient) error {
-	auth := smtp.PlainAuth("", client.senderEmail, client.senderPassword, client.gmailServer)
-	client.smtpServer = client.gmailServer
-	client.smtpServerPort = client.gmailPort
+	auth := smtp.PlainAuth("", client.smtpAuthUsername, client.smtpAuthPassword, client.smtpServer)
 	client.smtpServerAuth = auth
 	client.smtpServerPlain = true
 
 	return nil
+}
+
+// WithMailClientOptionSenderDisplayname sets the sender's email address.
+func WithMailClientOptionSenderDisplayname(name string) MailClientOption {
+	return func(c *MailClient) {
+		c.smtpDisplayName = name
+	}
+}
+
+// WithMailClientOptionSmtpAuthEmail sets the sender's email address.
+func WithMailClientOptionSmtpAuthEmail(email string) MailClientOption {
+	return func(c *MailClient) {
+		c.smtpAuthUsername = email
+	}
 }
 
 // WithMailClientOptionSenderEmail sets the sender's email address.
@@ -71,10 +83,10 @@ func WithMailClientOptionSenderEmail(email string) MailClientOption {
 	}
 }
 
-// WithMailClientOptionSenderPassword sets the sender's password address.
-func WithMailClientOptionSenderPassword(password string) MailClientOption {
+// WithMailClientOptionSmtpAuthPassword sets the sender's password address.
+func WithMailClientOptionSmtpAuthPassword(password string) MailClientOption {
 	return func(c *MailClient) {
-		c.senderPassword = password
+		c.smtpAuthPassword = password
 	}
 }
 
@@ -82,14 +94,6 @@ func WithMailClientOptionSenderPassword(password string) MailClientOption {
 func WithMailClientOptionTemplate(template string) MailClientOption {
 	return func(c *MailClient) {
 		c.template = template
-	}
-}
-
-// WithMailClientOptionGmailServer sets the Gmail server address and port.
-func WithMailClientOptionGmailServer(server string, port int) MailClientOption {
-	return func(c *MailClient) {
-		c.gmailServer = server
-		c.gmailPort = port
 	}
 }
 
@@ -101,24 +105,10 @@ func WithClientOptionSMTPServer(server string, port int) MailClientOption {
 	}
 }
 
-// WithClientOptionSMTPServerAuth sets the SMTP server authentication method.
-func WithClientOptionSMTPServerAuth(auth smtp.Auth) MailClientOption {
-	return func(c *MailClient) {
-		c.smtpServerAuth = auth
-	}
-}
-
-// WithClientOptionSMTPServerPlain sets the SMTP server plain authentication method.
-func WithClientOptionSMTPServerPlain(plain bool) MailClientOption {
-	return func(c *MailClient) {
-		c.smtpServerPlain = plain
-	}
-}
-
 // SendPasswordEmail sends an email with an automatically generated password to the recipient.
 func (c *MailClient) SendPasswordEmail(recipientEmail, password string) error {
 	to := mail.Address{Name: "", Address: recipientEmail}
-	from := mail.Address{Name: "", Address: c.senderEmail}
+	from := mail.Address{Name: c.smtpDisplayName, Address: c.senderEmail}
 	subject := "New Password"
 
 	body := fmt.Sprintf(c.template, to.Address, password)
