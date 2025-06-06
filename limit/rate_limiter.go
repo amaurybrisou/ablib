@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 type RateLimiterState struct {
@@ -77,14 +79,22 @@ func (rl *RateLimiter) Allow(ctx context.Context, userID string) bool {
 		// Save updated state
 		if data, err := json.Marshal(state); err == nil {
 			// Store with TTL of 1 hour to prevent stale data
-			rl.df.Set(ctx, key, data, time.Hour)
+			err = rl.df.Set(ctx, key, data, time.Hour)
+			if err != nil {
+				log.Ctx(ctx).Error().Err(err).Msg("failed to update rate limiter state in Dragonfly")
+				return false
+			}
 		}
 		return true
 	}
 
 	// Save updated state
 	if data, err := json.Marshal(state); err == nil {
-		rl.df.Set(ctx, key, data, time.Hour)
+		err = rl.df.Set(ctx, key, data, time.Hour)
+		if err != nil {
+			log.Ctx(ctx).Error().Err(err).Msg("failed to update rate limiter state in Dragonfly")
+			return false
+		}
 	}
 	return false
 }

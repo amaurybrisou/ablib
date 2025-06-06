@@ -27,7 +27,7 @@ func TestUserIDFromRequest_ValidToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if uid != "user123" {
+	if uid != "user123" { //nolint:goconst
 		t.Errorf("expected UID 'user123', got: %s", uid)
 	}
 }
@@ -41,7 +41,7 @@ func UserIDFromRequest(req *http.Request, pubKey *rsa.PublicKey) (any, any) {
 	if v == nil || v.Value == "" {
 		return "", fmt.Errorf("missing or empty token")
 	}
-	if v.Value == "valid" {
+	if v.Value == "valid" { //nolint:goconst
 		return "user123", nil
 	}
 	return "", fmt.Errorf("invalid token")
@@ -150,7 +150,7 @@ func RefreshTokenFromRequest(req *http.Request, secretKey *rsa.PublicKey) (*JWT,
 	if err != nil {
 		return nil, fmt.Errorf("failed to read request body: %v", err)
 	}
-	defer req.Body.Close()
+	defer req.Body.Close() //nolint:errcheck
 
 	var refreshToken map[string]string
 	err = json.Unmarshal(bodyBytes, &refreshToken)

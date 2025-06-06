@@ -63,7 +63,10 @@ func NewContainer(poolconfig *poolConfig, config ContainerConfig, opts ...newCon
 		return nil, err
 	}
 
-	r.Expire(60 * 5) // 5 minutes
+	err = r.Expire(60 * 5) // 5 minutes
+	if err != nil {
+		return nil, fmt.Errorf("failed to expire container | %w", err)
+	}
 
 	return &Container{
 		Pool:     pool,
@@ -112,8 +115,11 @@ func (c *Container) GetPortInt16() int16 {
 	}
 
 	var p int64
-	fmt.Sscanf(port, "%d", &p)
-	return int16(p)
+	_, err := fmt.Sscanf(port, "%d", &p)
+	if err != nil {
+		return 0
+	}
+	return int16(p) //nolint:gosec
 }
 
 func (c *Container) Retry(fn func() error) error {

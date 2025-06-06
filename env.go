@@ -70,7 +70,11 @@ func init() {
 		fmt.Println("loading environment: ", err)
 		return
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Error().Err(err).Msg("failed to close .env file")
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -80,7 +84,9 @@ func init() {
 			if len(parts) == 2 {
 				key := strings.TrimSpace(parts[0])
 				value := strings.TrimSpace(parts[1])
-				os.Setenv(key, value)
+				if err := os.Setenv(key, value); err != nil {
+					fmt.Printf("{\"level\":\"error\", \"msg\":\"failed to set env variable\", \"error\":\"%s\"}\n", err)
+				}
 			}
 		}
 	}

@@ -47,7 +47,7 @@ func TestIsAdminMiddleware_AllowsAdmin(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		w.Write([]byte("OK")) //nolint:errcheck,gosec
 	})
 
 	// Wrap the handler with the middleware.
@@ -85,7 +85,7 @@ func TestIsAdminMiddleware_RejectsNonAdmin(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		w.Write([]byte("OK")) //nolint:errcheck, gosec
 	})
 
 	// Wrap the handler with the middleware.

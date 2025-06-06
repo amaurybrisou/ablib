@@ -18,8 +18,8 @@ type CustomTestService struct {
 	done     chan struct{}
 }
 
-var customStartError = errors.New("custom start error")
-var customStopError = errors.New("custom stop error")
+var errCustomStart = errors.New("custom start error")
+var errCustomStop = errors.New("custom stop error")
 
 func (s CustomTestService) New(c *ablib.Core) {
 	c.AddStartFunc(s.Start)
@@ -38,7 +38,7 @@ func (s CustomTestService) Start(_ context.Context) (<-chan struct{}, <-chan err
 	if s.startErr {
 		go func() {
 			time.Sleep(time.Millisecond * 10)
-			errChan <- customStartError
+			errChan <- errCustomStart
 		}()
 	}
 
@@ -48,7 +48,7 @@ func (s CustomTestService) Start(_ context.Context) (<-chan struct{}, <-chan err
 func (s CustomTestService) Stop(_ context.Context) error {
 	close(s.done)
 	if s.stopErr {
-		return customStopError
+		return errCustomStop
 	}
 	return nil
 }
@@ -67,7 +67,7 @@ func TestCoreError(t *testing.T) {
 	started, errChan := lcore.Start(ctx)
 	require.NotNil(t, started)
 	<-started
-	require.ErrorIs(t, <-errChan, customStartError)
+	require.ErrorIs(t, <-errChan, errCustomStart)
 }
 
 func TestCoreContextDeadlineError(t *testing.T) {
@@ -88,7 +88,7 @@ func TestCoreShutdown(t *testing.T) {
 	require.NotNil(t, started)
 	<-started
 	err := lcore.Shutdown(ctx)
-	require.NoError(t, err)
+	require.NoError(t, <-err)
 }
 
 func TestCoreShutdownError(t *testing.T) {
@@ -98,8 +98,8 @@ func TestCoreShutdownError(t *testing.T) {
 	started, _ := lcore.Start(ctx)
 	require.NotNil(t, started)
 	<-started
-	err := lcore.Shutdown(ctx)
-	require.ErrorIs(t, err, customStopError)
+	errChan := lcore.Shutdown(ctx)
+	require.ErrorIs(t, <-errChan, errCustomStop)
 }
 
 func TestCoreShutdownContextDeadlineError(t *testing.T) {
@@ -112,7 +112,7 @@ func TestCoreShutdownContextDeadlineError(t *testing.T) {
 	ctx, cancel = context.WithTimeout(context.Background(), 0)
 	defer cancel()
 	err := lcore.Shutdown(ctx)
-	require.ErrorIs(t, err, customStopError)
+	require.ErrorIs(t, <-err, errCustomStop)
 }
 
 func TestCoreServices(t *testing.T) {
@@ -157,8 +157,10 @@ func TestCoreServices(t *testing.T) {
 		started, _ := lcore.Start(context.Background())
 		require.NotNil(t, started)
 		<-started
-		err := lcore.Shutdown(context.Background())
-		require.NoError(t, err)
+		errChan := lcore.Shutdown(context.Background())
+		for err := range errChan {
+			require.NoError(t, err)
+		}
 
 		options = []ablib.Options{}
 		for j := 0; j <= i; j++ {

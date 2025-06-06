@@ -239,7 +239,11 @@ func (m *heartBeatAt) checkServiceHealth(ctx context.Context, wg *sync.WaitGroup
 		m.resultsCh <- result
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Ctx(ctx).Error().Err(err).Msg("failed to close response body")
+		}
+	}()
 
 	result.service.SetStatus(http.StatusText(resp.StatusCode))
 

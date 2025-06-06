@@ -47,7 +47,12 @@ func (o *SocketServerOption) Start(ctx context.Context) (<-chan struct{}, <-chan
 	go func() {
 		defer close(errChan)
 		defer close(startedChan)
-		defer fd.Close()
+		defer func() {
+			if err := fd.Close(); err != nil {
+				log.Ctx(ctx).Error().Err(err).Msg("failed to close socket server")
+			}
+			log.Ctx(ctx).Info().Msg("socket server closed")
+		}()
 		for {
 			conn, err := fd.Accept()
 			if errors.Is(err, net.ErrClosed) {

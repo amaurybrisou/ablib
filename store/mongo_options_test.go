@@ -121,7 +121,7 @@ func TestMongoClientOperations(t *testing.T) {
 
 	client, err := NewMongoClient(ctx, opts)
 	assert.NoError(t, err)
-	defer client.Close(ctx)
+	defer client.Close(ctx) //nolint:errcheck
 
 	t.Run("InsertOne", func(t *testing.T) {
 		doc := TestDocument{Name: "test"}

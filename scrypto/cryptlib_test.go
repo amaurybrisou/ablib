@@ -14,7 +14,7 @@ import (
 
 func TestGenerateHash(t *testing.T) {
 	t.Run("successful password hashing", func(t *testing.T) {
-		password := "mySecurePassword123"
+		password := "mySecurePassword123" //nolint:goconst
 		hash, err := Hash(password, bcrypt.DefaultCost)
 
 		require.NoError(t, err)
@@ -23,7 +23,7 @@ func TestGenerateHash(t *testing.T) {
 	})
 
 	t.Run("with minimum cost", func(t *testing.T) {
-		password := "mySecurePassword123"
+		password := "mySecurePassword123" //nolint:goconst
 		hash, err := Hash(password, bcrypt.MinCost)
 
 		require.NoError(t, err)
@@ -32,7 +32,7 @@ func TestGenerateHash(t *testing.T) {
 	})
 
 	t.Run("with invalid cost below minimum", func(t *testing.T) {
-		password := "mySecurePassword123"
+		password := "mySecurePassword123" //nolint:goconst
 		hash, err := Hash(password, bcrypt.MinCost-1)
 
 		assert.Error(t, err)
@@ -40,7 +40,7 @@ func TestGenerateHash(t *testing.T) {
 	})
 
 	t.Run("with invalid cost above maximum", func(t *testing.T) {
-		password := "mySecurePassword123"
+		password := "mySecurePassword123" //nolint:goconst
 		hash, err := Hash(password, bcrypt.MaxCost+1)
 		assert.Error(t, err)
 		assert.Empty(t, hash)
@@ -193,7 +193,7 @@ func TestGetSignedCookie_InvalidValueTooShort(t *testing.T) {
 
 	cookie := http.Cookie{
 		Name:  "testCookie",
-		Value: string(encodedValue),
+		Value: encodedValue,
 	}
 	req.AddCookie(&cookie)
 

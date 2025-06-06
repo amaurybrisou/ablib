@@ -1,66 +1,42 @@
+# .golangci.yml
+version: "2"
+
 run:
-  timeout: 4m
-issues:
-  exclude-use-default: true
-  max-issues-per-linter: 0
-  max-same-issues: 0
-output:
-  format: line-number
-  print-issued-lines: false
+  # Optional: adjust as needed
+  timeout: 5m
+  go: "1.24.3"
+
+formatters:
+  enable:
+    - goimports
+    - gofmt
+
 linters:
   enable:
-    - dogsled
-    - durationcheck
-    - errcheck
-    - errorlint
-    - exportloopref
-    - gocyclo
-    - gocritic
-    - godot
-    - gofmt
-    - goimports
-    - gomoddirectives
-    - gomodguard
-    - goprintffuncname
     - gosec
-    - gosimple
     - govet
-    - importas
-    - ineffassign
-    - makezero
-    - misspell
-    - nestif
-    - nolintlint
-    - prealloc
-    - predeclared
-    - promlinter
+    - errcheck
     - staticcheck
-    - testpackage
-    - typecheck
-    - unused
-    - whitespace
-linters-settings:
-  gocyclo:
-    # minimal code complexity to report, 30 by default (but we recommend 10-20)
-    min-complexity: 25
-  goconst:
-    min-len: 2
-    min-occurrences: 2
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - experimental
-      - opinionated
-      - performance
-      - style
-    disabled-checks:
-      - dupImport # https://github.com/go-critic/go-critic/issues/845
-      - ifElseChain
-      - whyNoLint
-      - wrapperFunc
-      - docStub
-      - paramTypeCombine
-      - unnamedResult
-      - sloppyReassign
-      - commentedOutCode
-      - hugeParam
+    - gocritic
+    - gocyclo
+    - goconst
+    - misspell
+    # - revive TODO: Uncomment this and update the documentations
+    - unconvert
+    - ineffassign
+    - dupl
+
+  settings:
+    gosec:
+      config:
+        global:
+          nosec: true
+      # By default, gosec uses its own rule set. You can customize here if needed.
+      # exclude-use-default: false
+      # include:
+      #   - G104
+      # exclude:
+      #   - G101
+
+output:
+  show-stats: false

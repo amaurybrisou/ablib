@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-const XUserTokenHeader = "X-User-Token"
+const XUserTokenHeader = "X-User-Token" //nolint:gosec
 
 type RateLimiter interface {
 	Allow(ctx context.Context, userID string) bool

@@ -37,7 +37,7 @@ func NewCore(opts ...Options) *Core {
 }
 
 func hasServiceStarted(ctx context.Context, expectedStart int, startedChans <-chan <-chan struct{}) <-chan struct{} {
-	startChan := aggChan[struct{}](ctx, startedChans)
+	startChan := aggChan(ctx, startedChans)
 	done := make(chan struct{}, 1)
 
 	go func() {
@@ -60,7 +60,7 @@ func hasServiceStarted(ctx context.Context, expectedStart int, startedChans <-ch
 }
 
 func hasServiceErrors(ctx context.Context, errChans <-chan <-chan error) <-chan error {
-	errChan := aggChan[error](ctx, errChans)
+	errChan := aggChan(ctx, errChans)
 	errorEncountered := make(chan error, 1)
 
 	go func() {
@@ -122,29 +122,32 @@ func (c *Core) Start(ctx context.Context) (<-chan struct{}, <-chan error) {
 	return allStarted, hasErrorChan
 }
 
-func (c *Core) Shutdown(ctx context.Context) error {
+func (c *Core) Shutdown(ctx context.Context) <-chan error {
 	log.Ctx(ctx).Debug().Msg("shutting down")
+	errChan := make(chan error, len(c.stopFuncs))
 	wg := sync.WaitGroup{}
 
-	var err error
 	for _, fn := range c.stopFuncs {
 		wg.Add(1)
 		go func(f stopFuncType) {
 			defer wg.Done()
-			err = f(ctx)
-			if err != nil {
+			if err := f(ctx); err != nil {
 				log.Ctx(ctx).Error().Err(err).Msg("closing service")
+				errChan <- err
 			}
 		}(fn)
 	}
 
-	wg.Wait()
+	// Close error channel after all goroutines complete
+	go func() {
+		wg.Wait()
+		if c.cleanup != nil {
+			c.cleanup()
+		}
+		close(errChan)
+	}()
 
-	if c.cleanup != nil {
-		c.cleanup()
-	}
-
-	return err
+	return errChan
 }
 
 var (
