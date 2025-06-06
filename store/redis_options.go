@@ -3,11 +3,14 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
+
 	"github.com/rs/zerolog/log"
 )
 
+//go:generate mockgen -destination=./mock_redis_client.go -package=store github.com/amaurybrisou/ablib/store Persister
 type Persister interface {
 	InsertOne(ctx context.Context, dataBase, col string, doc interface{}) (string, error)
 }
@@ -39,7 +42,7 @@ func (r *RedisClient) start(ctx context.Context) error {
 
 	log.Ctx(ctx).Info().Str("address", addr).Msg("start redis client")
 
-	_, err := conn.Ping().Result()
+	_, err := conn.Ping(ctx).Result()
 	if err != nil {
 		log.Ctx(ctx).Error().Err(err).Msg("redis client")
 		return err
@@ -58,6 +61,17 @@ func (r *RedisClient) Close(ctx context.Context) error {
 	return r.Client.Close()
 }
 
-func (r *RedisClient) InsertOne(ctx context.Context, dataBase, col string, doc interface{}) (string, error) {
-	return "", nil
+func (r *RedisClient) Set(ctx context.Context, dataBase, col string, doc interface{}, exp time.Duration) (string, error) {
+	if r.Client == nil {
+		return "", fmt.Errorf("redis client is not initialized")
+	}
+
+	key := fmt.Sprintf("%s:%s", dataBase, col)
+	result, err := r.Client.Set(ctx, key, doc, exp).Result()
+	if err != nil {
+		log.Ctx(ctx).Error().Err(err).Str("key", key).Msg("failed to set value in redis")
+		return "", err
+	}
+	log.Ctx(ctx).Info().Str("key", key).Msg("set value in redis")
+	return result, nil
 }
