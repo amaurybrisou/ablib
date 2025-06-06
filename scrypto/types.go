@@ -1,16 +1,57 @@
 package scrypto
 
-// JWK represents a JSON Web Key
-// It contains the private key, public key, algorithm, and key ID.
-type JWK struct {
-	PrivateKey any    `json:"-"`
-	PublicKey  any    `json:"public_key"`
-	Alg        string `json:"alg"`
-	Kid        string `json:"kid"`
+import (
+	"crypto/ed25519"
+	"crypto/rsa"
+)
+
+type ScryptoKey int8
+
+const (
+	// ED25519 represents the Ed25519 key type.
+	ED25519 ScryptoKey = iota
+	// RSA represents the RSA key type.
+	RSA
+)
+
+// KeyPair defines the constraints for private and public key pairs
+type PrivateKeyPair interface {
+	// ED25519 pair
+	ed25519.PrivateKey |
+		// RSA pair
+		*rsa.PrivateKey
 }
 
-func (j JWK) String() string {
+type PublicKeyPair interface {
+	// ED25519 pair
+	ed25519.PublicKey |
+		// RSA pair
+		*rsa.PublicKey
+}
+
+// JWK represents a JSON Web Key with type-safe key pairs
+type JWK[PRV PrivateKeyPair, PUB PublicKeyPair] struct {
+	KeyType    ScryptoKey `json:"-"`
+	PrivateKey PRV        `json:"-"`
+	PublicKey  PUB        `json:"public_key"`
+	Alg        string     `json:"alg"`
+	Kid        string     `json:"kid"`
+}
+
+func (j JWK[PRV, PUB]) String() string {
 	return j.Kid
+}
+func NewJWK[PRV PrivateKeyPair, PUB PublicKeyPair](keyType ScryptoKey, privateKey PRV, publicKey PUB, alg string, kid string) *JWK[PRV, PUB] {
+	return &JWK[PRV, PUB]{
+		KeyType:    keyType,
+		PrivateKey: privateKey,
+		PublicKey:  publicKey,
+		Alg:        alg,
+		Kid:        kid,
+	}
+}
+func (j JWK[PRV, PUB]) Pub() PUB {
+	return j.PublicKey
 }
 
 // AllowedClaimKeys represents the allowed keys for claims in the JWT.

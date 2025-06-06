@@ -28,13 +28,13 @@ func UserIDFromRequest(r *http.Request, secretKey *rsa.PublicKey) (string, error
 }
 
 // AuthTokenFromRequest extracts the user ID from the request's cookies.
-func AuthTokenFromRequest(r *http.Request, secretKey *rsa.PublicKey) (*JWT, error) {
+func AuthTokenFromRequest(r *http.Request, secretKey *rsa.PublicKey) (*JWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
 	tokenStr, err := getTokenFromSource(r, "token", tokenStrFromHeaders)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get token: %v", err)
 	}
 
-	token, err := ParseAuthToken(tokenStr, secretKey)
+	token, err := ParseAuthTokenRSA(tokenStr, secretKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse token: %v", err)
 	}
@@ -51,13 +51,13 @@ func AuthTokenFromRequest(r *http.Request, secretKey *rsa.PublicKey) (*JWT, erro
 // The function also handles the case where the refresh token is passed in the request body as JSON.
 // It decodes the request body and extracts the refresh token from the "refresh_token" field.
 // If the refresh token is not found in the request body, it returns an error.
-func RefreshTokenFromRequest(r *http.Request, secretKey *rsa.PublicKey) (*JWT, error) {
+func RefreshTokenFromRequest(r *http.Request, secretKey *rsa.PublicKey) (*JWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
 	refreshTokenStr, err := getTokenFromSource(r, "refresh_token", refreshTokenStrFromBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get refresh token from request: %v", err)
 	}
 
-	parsedRefreshToken, err := ParseRefreshToken(refreshTokenStr, secretKey)
+	parsedRefreshToken, err := parseRefreshTokenRSA(refreshTokenStr, secretKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse refresh token: %v", err)
 	}

@@ -13,12 +13,12 @@ import (
 // ValidateContextGRPC validates the JWT token from the incoming gRPC context
 // It extracts the token from the context and parses it using the provided public key
 // If the token is valid, it returns the JWT struct
-func ValidateContextGRPC(ctx context.Context, publicKey *rsa.PublicKey) (*JWT, error) {
+func ValidateContextGRPC(ctx context.Context, publicKey *rsa.PublicKey) (*JWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
 	token, err := JWTokenStringFromIncomingContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return ParseAuthToken(token, publicKey)
+	return ParseAuthTokenRSA(token, publicKey)
 }
 
 // JWTokenStringFromIncomingContext extracts the JWT token from the incoming gRPC context

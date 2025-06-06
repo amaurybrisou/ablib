@@ -4,6 +4,7 @@ package scrypto
 import (
 	"crypto/ed25519"
 	"crypto/rsa"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -11,9 +12,9 @@ import (
 )
 
 // BareJWT represents a JSON Web Token (JWT) with additional fields.
-type BareJWT struct {
+type BareJWT[PRIV PrivateKeyPair, PUB PublicKeyPair] struct {
 	// JWK represents the JSON Web Key (JWK) used to sign the JWT.
-	JWK
+	*JWK[PRIV, PUB] `json:"jwk"`
 	// Iss is the issuer of the JWT.
 	Iss string `json:"iss"`
 	// Iat is the issued at time of the JWT.
@@ -28,8 +29,8 @@ type BareJWT struct {
 }
 
 // NewBareJWT creates a new BareJWT instance with the provided private key and issuer.
-func NewBareJWT(privateKey JWK, issuer string) BareJWT {
-	return BareJWT{
+func NewBareJWT[PRIV PrivateKeyPair, PUB PublicKeyPair](privateKey *JWK[PRIV, PUB], issuer string) BareJWT[PRIV, PUB] {
+	return BareJWT[PRIV, PUB]{
 		JWK: privateKey,
 		Iss: issuer,
 		Kid: privateKey.Kid,
@@ -37,8 +38,17 @@ func NewBareJWT(privateKey JWK, issuer string) BareJWT {
 }
 
 // SignWithClaims signs the JWT with the provided claims and expiration time.
-func (m *BareJWT) SignWithClaims(customClaims map[AllowedClaimKeys]any, exp time.Time) (string, string, error) {
-	return signWithClaimsCommon(customClaims, exp, m.PrivateKey.(*rsa.PrivateKey), jwt.SigningMethodRS256, m.Kid, m.Iss)
+func (m *BareJWT[PRIV, PUB]) SignWithClaims(customClaims map[AllowedClaimKeys]any, exp time.Time) (string, string, error) {
+	var method jwt.SigningMethod
+	switch m.KeyType {
+	case ED25519:
+		method = jwt.SigningMethodEdDSA
+	case RSA:
+		method = jwt.SigningMethodRS256
+	default:
+		return "", "", fmt.Errorf("unsupported key type: %v", m.KeyType)
+	}
+	return signWithClaimsCommon(customClaims, exp, m.PrivateKey, method, m.Kid, m.Iss)
 }
 
 func signWithClaimsCommon(customClaims map[AllowedClaimKeys]any, exp time.Time, privateKey any, method jwt.SigningMethod, kid, iss string) (string, string, error) {
@@ -64,46 +74,52 @@ func signWithClaimsCommon(customClaims map[AllowedClaimKeys]any, exp time.Time, 
 	return tokenString, jti, nil
 }
 
-// ParseBareJWTED25519 parses a JWT token string and returns a BareJWT object.
-func ParseBareJWTED25519(tokenString string, publicKey ed25519.PublicKey, claimKeys ...AllowedClaimKeys) (BareJWT, error) {
-	bareJWT, err := parseBareJWTCommon(tokenString, publicKey, jwt.SigningMethodEdDSA)
-	if err != nil {
-		return BareJWT{}, err
+// ParseBareJWT parses a JWT token string and returns a BareJWT object.
+func ParseBareJWT[PRIV PrivateKeyPair, PUB PublicKeyPair](tokenString string, jwk *JWK[PRIV, PUB], claimKeys ...AllowedClaimKeys) (BareJWT[PRIV, PUB], error) {
+	var method jwt.SigningMethod
+	switch jwk.KeyType {
+	case ED25519:
+		method = jwt.SigningMethodEdDSA
+	case RSA:
+		method = jwt.SigningMethodRS256
+	default:
+		return BareJWT[PRIV, PUB]{}, fmt.Errorf("unsupported key type: %v", jwk.KeyType)
 	}
 
-	if len(claimKeys) > 0 {
-		for _, key := range claimKeys {
-			if value, ok := bareJWT.MapClaims[string(key)]; ok {
-				bareJWT.MapClaims[string(key)] = value
-			}
-		}
+	bareJWT, err := parseBareJWTCommon[PRIV, PUB](tokenString, jwk.PublicKey, method)
+	if err != nil {
+		return BareJWT[PRIV, PUB]{}, err
 	}
+
 	return bareJWT, nil
 }
 
-// ParseBareJWTRSA parses a JWT token string and returns a BareJWT object.
+// parseBareJWTED25519 parses a JWT token string and returns a BareJWT object.
+func parseBareJWTED25519(tokenString string, publicKey ed25519.PublicKey, claimKeys ...AllowedClaimKeys) (BareJWT[ed25519.PrivateKey, ed25519.PublicKey], error) {
+	bareJWT, err := parseBareJWTCommon[ed25519.PrivateKey, ed25519.PublicKey](tokenString, publicKey, jwt.SigningMethodEdDSA)
+	if err != nil {
+		return BareJWT[ed25519.PrivateKey, ed25519.PublicKey]{}, err
+	}
+
+	return bareJWT, nil
+}
+
+// parseBareJWTRSA parses a JWT token string and returns a BareJWT object.
 // It uses the provided public key to verify the token's signature.
 // The token must be signed using the RS256 algorithm.
 // The function also accepts a variable number of claim keys to extract from the token claims.
 // If the claim keys are provided, they will be added to the MapClaims of the BareJWT object.
 // If the token is invalid or the claims cannot be parsed, an error will be returned.
-func ParseBareJWTRSA(tokenString string, publicKey *rsa.PublicKey, claimKeys ...AllowedClaimKeys) (BareJWT, error) {
-	bareJWT, err := parseBareJWTCommon(tokenString, publicKey, jwt.SigningMethodRS256)
+func parseBareJWTRSA(tokenString string, publicKey *rsa.PublicKey, claimKeys ...AllowedClaimKeys) (BareJWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
+	bareJWT, err := parseBareJWTCommon[*rsa.PrivateKey, *rsa.PublicKey](tokenString, publicKey, jwt.SigningMethodRS256)
 	if err != nil {
-		return BareJWT{}, err
+		return BareJWT[*rsa.PrivateKey, *rsa.PublicKey]{}, err
 	}
 
-	if len(claimKeys) > 0 {
-		for _, key := range claimKeys {
-			if value, ok := bareJWT.MapClaims[string(key)]; ok {
-				bareJWT.MapClaims[string(key)] = value
-			}
-		}
-	}
 	return bareJWT, nil
 }
 
-func parseBareJWTCommon(tokenString string, publicKey any, method jwt.SigningMethod) (BareJWT, error) {
+func parseBareJWTCommon[PRIV PrivateKeyPair, PUB PublicKeyPair](tokenString string, publicKey any, method jwt.SigningMethod) (BareJWT[PRIV, PUB], error) {
 	token, err := parseTokenCommon(tokenString, func(token *jwt.Token) (any, error) {
 		if token.Method != method {
 			return nil, ErrUnexpectedMethod
@@ -111,11 +127,11 @@ func parseBareJWTCommon(tokenString string, publicKey any, method jwt.SigningMet
 		return publicKey, nil
 	})
 	if err != nil {
-		return BareJWT{}, err
+		return BareJWT[PRIV, PUB]{}, err
 	}
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
-		parsedJWT := BareJWT{
+		parsedJWT := BareJWT[PRIV, PUB]{
 			Jti: getClaim[string](claims, "jti"),
 			Iss: getClaim[string](claims, "iss"),
 			Exp: int64(claims["exp"].(float64)),
@@ -128,5 +144,5 @@ func parseBareJWTCommon(tokenString string, publicKey any, method jwt.SigningMet
 		return parsedJWT, nil
 	}
 
-	return BareJWT{}, ErrInvalidClaims
+	return BareJWT[PRIV, PUB]{}, ErrInvalidClaims
 }
