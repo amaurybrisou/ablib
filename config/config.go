@@ -30,7 +30,7 @@ func New() Config {
 	c := Config{}
 	err = env.Parse(&c)
 	if err != nil {
-		log.Fatal().Err(err).Msg("could not load config")
+		log.Panic().Err(err).Msg("failed to parse environment variables")
 	}
 
 	return c
