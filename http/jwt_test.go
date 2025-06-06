@@ -5,6 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/amaurybrisou/ablib/scrypto"
+	"github.com/google/uuid"
 )
 
 // TestValidateJWTMiddleware_MissingToken checks that a request with no token returns 401.
@@ -77,4 +81,45 @@ func TestWithHeaderJWT_False(t *testing.T) {
 	if conf.AllowHeaderJWT {
 		t.Error("WithHeaderJWT(false) did not set AllowHeaderJWT to false")
 	}
+}
+
+func BenchmarkValidateJWTMiddleware(b *testing.B) {
+	priv, pub, _ := scrypto.GenerateRSAKeys(2048)
+	jwk := scrypto.JWK{
+		PrivateKey: priv,
+		PublicKey:  pub,
+		Kid:        "test-key",
+		Alg:        "RS256",
+	}
+
+	token := scrypto.NewJWT(jwk, "test-issuer", uuid.NewString(), "")
+	validTokenStr, _, _ := token.SignWithClaims(map[scrypto.AllowedClaimKeys]any{
+		scrypto.ClaimKeyPurpose: scrypto.ClaimPurposeAuthentication,
+	}, time.Now().Add(time.Hour))
+
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	b.Run("valid_token", func(b *testing.B) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Authorization", "Bearer "+validTokenStr)
+		rec := httptest.NewRecorder()
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			ValidateJWTMiddleware(jwk.PublicKey, WithHeaderJWT(true))(nextHandler).ServeHTTP(rec, req)
+		}
+	})
+
+	b.Run("invalid_token", func(b *testing.B) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Authorization", "Bearer invalid.token")
+		rec := httptest.NewRecorder()
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			ValidateJWTMiddleware(jwk.PublicKey, WithHeaderJWT(true))(nextHandler).ServeHTTP(rec, req)
+		}
+	})
 }
