@@ -3,12 +3,9 @@ package ablibhttp
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
-	"time"
 
-	"github.com/amaurybrisou/ablib/cryptlib"
-	"github.com/amaurybrisou/ablib/jwtlib"
+	"github.com/amaurybrisou/ablib/scrypto"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
@@ -16,21 +13,17 @@ import (
 type CookieAuth struct {
 	secret                   []byte
 	cookieName, cookieDomain string
-	jwt                      *jwtlib.JWT
-	jwtAuth                  *JwtAuth
 	maxAge                   int
 	db                       AuthRepository
 }
 
-func NewCookieAuthHandler(secret, name, cookieDomain string, maxAge int, db AuthRepository, jwt *jwtlib.JWT) CookieAuth {
+func NewCookieAuthHandler(secret, name, cookieDomain string, maxAge int, db AuthRepository) CookieAuth {
 	return CookieAuth{
 		secret:       []byte(secret),
 		cookieName:   name,
 		cookieDomain: cookieDomain,
 		maxAge:       maxAge,
 		db:           db,
-		jwt:          jwt,
-		jwtAuth:      NewJwtAuth(jwt, db),
 	}
 }
 
@@ -55,7 +48,7 @@ func (s CookieAuth) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.GetID() == uuid.Nil || !cryptlib.ValidateHash(creds.Password, user.GetPassword()) {
+	if user.GetID() == uuid.Nil || !scrypto.ValidateHash(creds.Password, user.GetPassword()) {
 		log.Ctx(r.Context()).Error().Err(err).Msg("invalid credentials")
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
@@ -72,61 +65,11 @@ func (s CookieAuth) Login(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	}
 
-	err = cryptlib.SetSignedCookie(w, cookie, s.secret)
+	err = scrypto.SetSignedCookie(w, cookie, s.secret)
 	if err != nil {
 		log.Ctx(r.Context()).Error().Err(err).Msg("Invalid request body")
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
-	}
-
-	if s.jwt != nil {
-		expiresAt := time.Now().Add(time.Second * 15)
-		token, err := s.jwt.GenerateToken(user.GetID().String(), expiresAt, time.Now())
-		if err != nil {
-			log.Ctx(r.Context()).Error().Err(err).Msg("failed to generate")
-			http.Error(w, "failed to generate token", http.StatusInternalServerError)
-			return
-		}
-
-		refreshToken, err := s.jwt.GenerateToken(user.GetID().String(), expiresAt.Add(time.Minute*55), time.Now())
-		if err != nil {
-			log.Ctx(r.Context()).Error().Err(err).Msg("failed to generate")
-			http.Error(w, "failed to generate refresh token", http.StatusInternalServerError)
-			return
-		}
-
-		err = s.db.AddRefreshToken(r.Context(), user.GetID().String(), refreshToken)
-		if err != nil {
-			log.Ctx(r.Context()).Error().Err(err).Msg("failed to save refresh token")
-			http.Error(w, "failed to save refresh token", http.StatusInternalServerError)
-			return
-		}
-
-		jwtCookie := http.Cookie{
-			Name:     "jwt_refresh_token",
-			Value:    refreshToken,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			Secure:   true,
-			Domain:   s.cookieDomain,
-			MaxAge:   int(time.Hour),
-		}
-
-		err = cryptlib.SetSignedCookie(w, jwtCookie, []byte(s.jwt.SecretKey))
-		if err != nil {
-			log.Ctx(r.Context()).Error().Err(err).Msg("failed to generate")
-			http.Error(w, "failed to signe refresh token cookie", http.StatusInternalServerError)
-			return
-		}
-		// Return the token as the response
-		response := map[string]string{
-			"token":      token,
-			"expires_at": fmt.Sprintf("%d", expiresAt.Unix()),
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response) //nolint
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -142,20 +85,11 @@ func (s CookieAuth) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, cookies)
 }
 
-func (s CookieAuth) RefreshToken(w http.ResponseWriter, r *http.Request) {
-	if s.jwt != nil {
-		s.jwtAuth.RefreshToken(w, r)
-		return
-	}
-}
 func (s CookieAuth) Middleware(successNext http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userIDString, err := cryptlib.GetSignedCookie(r, s.cookieName, s.secret)
+		userIDString, err := scrypto.GetSignedCookie(r, s.cookieName, s.secret)
 		if err != nil {
-			if s.jwt != nil {
-				s.jwtAuth.Middleware(successNext).ServeHTTP(w, r)
-				return
-			}
+
 			log.Ctx(r.Context()).Error().
 				Err(err).
 				Any("cookie.value", userIDString).
@@ -163,7 +97,7 @@ func (s CookieAuth) Middleware(successNext http.Handler) http.Handler {
 			switch {
 			case errors.Is(err, http.ErrNoCookie):
 				http.Error(w, "cookie not found", http.StatusBadRequest)
-			case errors.Is(err, cryptlib.ErrInvalidValue):
+			case errors.Is(err, scrypto.ErrInvalidValue):
 				http.Error(w, "invalid cookie", http.StatusBadRequest)
 			default:
 				http.Error(w, "server error", http.StatusInternalServerError)
@@ -196,13 +130,9 @@ func (s CookieAuth) Middleware(successNext http.Handler) http.Handler {
 
 func (s CookieAuth) NonAuthoritativeMiddleware(successNext http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userIDString, err := cryptlib.GetSignedCookie(r, s.cookieName, s.secret)
+		userIDString, err := scrypto.GetSignedCookie(r, s.cookieName, s.secret)
 		if err != nil {
-			if s.jwt != nil {
-				NewJwtAuth(s.jwt, s.db).
-					NonAuthoritativeMiddleware(successNext).ServeHTTP(w, r)
-				return
-			}
+
 			log.Ctx(r.Context()).Warn().
 				Err(err).
 				Any("cookie.value", userIDString).
