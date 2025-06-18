@@ -9,6 +9,7 @@ import (
 )
 
 func TestGenerateED25519Keys(t *testing.T) {
+	t.Parallel()
 	privateKey, publicKey, err := GenerateED25519Keys()
 	if err != nil {
 		t.Fatalf("GenerateED25519Keys returned error: %v", err)
@@ -31,6 +32,7 @@ func TestGenerateED25519Keys(t *testing.T) {
 }
 
 func TestGenerateRSAKeys(t *testing.T) {
+	t.Parallel()
 	bits := 2048
 	privateKey, publicKey, err := GenerateRSAKeys(bits)
 	if err != nil {

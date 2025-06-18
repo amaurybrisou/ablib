@@ -14,6 +14,7 @@ import (
 
 // TestValidateJWTMiddleware_MissingToken checks that a request with no token returns 401.
 func TestValidateJWTMiddleware_MissingToken(t *testing.T) {
+	t.Parallel()
 	pubKey := &rsa.PublicKey{}
 	middleware := ValidateJWTMiddleware(
 		&scrypto.JWK[*rsa.PrivateKey, *rsa.PublicKey]{PublicKey: pubKey},
@@ -38,6 +39,7 @@ func TestValidateJWTMiddleware_MissingToken(t *testing.T) {
 
 // TestValidateJWTMiddleware_InvalidToken ensures that an invalid token leads to a 401 response.
 func TestValidateJWTMiddleware_InvalidToken(t *testing.T) {
+	t.Parallel()
 	pubKey := &rsa.PublicKey{}
 	middleware := ValidateJWTMiddleware(
 		&scrypto.JWK[*rsa.PrivateKey, *rsa.PublicKey]{PublicKey: pubKey},
@@ -66,6 +68,7 @@ func TestValidateJWTMiddleware_InvalidToken(t *testing.T) {
 }
 
 func TestWithHeaderJWT_True(t *testing.T) {
+	t.Parallel()
 	config := middlewareConfig[*rsa.PrivateKey, *rsa.PublicKey]{}
 	opt := WithHeaderJWT[*rsa.PrivateKey, *rsa.PublicKey](true)
 	opt(&config)
@@ -76,6 +79,7 @@ func TestWithHeaderJWT_True(t *testing.T) {
 }
 
 func TestWithHeaderJWT_False(t *testing.T) {
+	t.Parallel()
 	conf := middlewareConfig[*rsa.PrivateKey, *rsa.PublicKey]{}
 	// Change config so that it is not already false.
 	conf.allowHeaderJWT = true
@@ -90,6 +94,7 @@ func TestWithHeaderJWT_False(t *testing.T) {
 
 // TestDefaultConfig_EmptyToken ensures that an empty token returns scrypto.ErrInvalidToken.
 func TestDefaultConfig_EmptyToken(t *testing.T) {
+	t.Parallel()
 	// Create a dummy jwk using a dummy rsa public key.
 	dummyJWK := &scrypto.JWK[*rsa.PrivateKey, *rsa.PublicKey]{
 		PublicKey: &rsa.PublicKey{},
@@ -107,6 +112,7 @@ func TestDefaultConfig_EmptyToken(t *testing.T) {
 
 // TestDefaultConfig_InvalidPurpose tests that a token with wrong purpose returns scrypto.ErrInvalidPurpose.
 func TestDefaultConfig_InvalidPurpose(t *testing.T) {
+	t.Parallel()
 	// Override with mock implementation
 	parseTokenFunc := func(tokenStr string) (*scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
 		return nil, scrypto.ErrInvalidPurpose
@@ -125,6 +131,7 @@ func TestDefaultConfig_InvalidPurpose(t *testing.T) {
 
 // TestDefaultConfig_ValidToken verifies that a valid token is properly parsed.
 func TestDefaultConfig_ValidToken(t *testing.T) {
+	t.Parallel()
 	parseTokenFunc := func(tokenStr string) (*scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
 		// If the token string is "valid", return a token with the correct purpose.
 		if tokenStr == "valid" {
@@ -151,6 +158,7 @@ func TestDefaultConfig_ValidToken(t *testing.T) {
 
 // Optional: A simple integration test using defaultConfig through the middleware.
 func TestValidateJWTMiddleware_WithValidToken(t *testing.T) {
+	t.Parallel()
 	parseTokenFunc := func(tokenStr string) (*scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
 		if tokenStr == "valid-token" {
 			return &scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey]{

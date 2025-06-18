@@ -76,6 +76,7 @@ func (fc *fakeClient) Set(ctx context.Context, key string, value any, expiration
 }
 
 func TestAllow_NewUser(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	client := newFakeClient()
 	rl := NewRateLimiter(client, 1, 1, "test")
@@ -94,6 +95,7 @@ func TestAllow_NewUser(t *testing.T) {
 }
 
 func TestAllow_ReplenishToken(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	client := newFakeClient()
 	// Use a burst of 5 tokens and a rate of 1 token per second.
@@ -138,6 +140,7 @@ func TestAllow_ReplenishToken(t *testing.T) {
 }
 
 func TestAllow_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	client := newFakeClient()
 	rl := NewRateLimiter(client, 1, 2, "test")
@@ -155,6 +158,7 @@ func TestAllow_InvalidJSON(t *testing.T) {
 }
 
 func TestAllow_ForcedGetError(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	// Simulate Get error by forcing an error in fakeClient.
 	client := newFakeClient()
@@ -170,6 +174,7 @@ func TestAllow_ForcedGetError(t *testing.T) {
 }
 
 func TestAllow_ExhaustTokens(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	client := newFakeClient()
 	rl := NewRateLimiter(client, 0.5, 3, "test") // refill rate 0.5 token per second, burst 3 tokens
@@ -208,6 +213,7 @@ func TestAllow_ExhaustTokens(t *testing.T) {
 	}
 }
 func TestAllow_Concurrent(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	client := newFakeClient()
 	rl := NewRateLimiter(client, 1, 5, "test")
@@ -234,6 +240,7 @@ func TestAllow_Concurrent(t *testing.T) {
 }
 
 func TestAllow_EdgeCases(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	tests := []struct {
 		name      string
@@ -248,6 +255,7 @@ func TestAllow_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			client := newFakeClient()
 			rl := NewRateLimiter(client, tt.rate, tt.burst, "test")
 			if got := rl.Allow(ctx, "test-user"); got != tt.wantAllow {
@@ -257,6 +265,7 @@ func TestAllow_EdgeCases(t *testing.T) {
 	}
 }
 func TestAllow_FractionalTokens(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	client := newFakeClient()
 	// 0.1 tokens per second, max 1 token
@@ -307,6 +316,7 @@ func TestAllow_FractionalTokens(t *testing.T) {
 }
 
 func TestAllow_EmptyUserID(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	client := newFakeClient()
 	rl := NewRateLimiter(client, 1, 1, "test")

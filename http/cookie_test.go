@@ -23,6 +23,7 @@ func (stubAuthRepo) AddRefreshToken(_ context.Context, _ string, _ string) error
 func (stubAuthRepo) RemoveRefreshToken(_ context.Context, _ string) error        { return nil }
 
 func TestCookieAuthMiddleware_NoCookie(t *testing.T) {
+	t.Parallel()
 	auth := NewCookieAuthHandler("secret", "session", "", 3600, stubAuthRepo{})
 	called := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -43,6 +44,7 @@ func TestCookieAuthMiddleware_NoCookie(t *testing.T) {
 }
 
 func TestCookieAuthLogout_NoCookie(t *testing.T) {
+	t.Parallel()
 	auth := NewCookieAuthHandler("secret", "session", "", 3600, stubAuthRepo{})
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rr := httptest.NewRecorder()

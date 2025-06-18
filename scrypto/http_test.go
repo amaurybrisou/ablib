@@ -15,6 +15,7 @@ import (
 
 // TestUserIDFromRequest_ValidToken checks that a valid token returns the correct user ID.
 func TestUserIDFromRequest_ValidToken(t *testing.T) {
+	t.Parallel()
 	pubKey := &rsa.PublicKey{}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	// Set a cookie "token" with value "valid".
@@ -49,6 +50,7 @@ func UserIDFromRequest(req *http.Request, pubKey *rsa.PublicKey) (any, any) {
 
 // TestUserIDFromRequest_MissingToken verifies that when there is no token in the request, an error is returned.
 func TestUserIDFromRequest_MissingToken(t *testing.T) {
+	t.Parallel()
 	pubKey := &rsa.PublicKey{}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	// Do not set any cookie or header.
@@ -61,6 +63,7 @@ func TestUserIDFromRequest_MissingToken(t *testing.T) {
 
 // TestUserIDFromRequest_NilToken simulates the case when ParseAuthToken returns a nil token.
 func TestUserIDFromRequest_NilToken(t *testing.T) {
+	t.Parallel()
 	pubKey := &rsa.PublicKey{}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	// Set a cookie "token" with a value that will simulate a nil token.
@@ -77,6 +80,7 @@ func TestUserIDFromRequest_NilToken(t *testing.T) {
 
 // TestUserIDFromRequest_EmptyUID verifies that if the token has an empty UID, an error is returned.
 func TestUserIDFromRequest_EmptyUID(t *testing.T) {
+	t.Parallel()
 	pubKey := &rsa.PublicKey{}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	// Set a cookie "token" with a value that yields an empty UID.
@@ -111,6 +115,7 @@ func ParseRefreshToken(tokenStr string, secretKey *rsa.PublicKey) (*JWT, error) 
 
 // TestRefreshTokenFromRequest_ValidTokenFromCookie checks that a valid refresh token in a cookie is parsed correctly.
 func TestRefreshTokenFromRequest_ValidTokenFromCookie(t *testing.T) {
+	t.Parallel()
 	secretKey := &rsa.PublicKey{}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{
@@ -171,6 +176,7 @@ func RefreshTokenFromRequest(req *http.Request, secretKey *rsa.PublicKey) (*JWT,
 
 // TestRefreshTokenFromRequest_ValidTokenFromBody verifies that a valid refresh token in the JSON body is parsed correctly.
 func TestRefreshTokenFromRequest_ValidTokenFromBody(t *testing.T) {
+	t.Parallel()
 	secretKey := &rsa.PublicKey{}
 	bodyMap := map[string]string{"refresh_token": "valid"}
 	bodyBytes, _ := json.Marshal(bodyMap)
@@ -191,6 +197,7 @@ func TestRefreshTokenFromRequest_ValidTokenFromBody(t *testing.T) {
 
 // TestRefreshTokenFromRequest_MissingToken checks that when no refresh token is provided, an error is returned.
 func TestRefreshTokenFromRequest_MissingToken(t *testing.T) {
+	t.Parallel()
 	secretKey := &rsa.PublicKey{}
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	// No cookie and empty body.
@@ -202,6 +209,7 @@ func TestRefreshTokenFromRequest_MissingToken(t *testing.T) {
 
 // TestRefreshTokenFromRequest_InvalidJSON checks that a malformed JSON in body returns an error.
 func TestRefreshTokenFromRequest_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	secretKey := &rsa.PublicKey{}
 	invalidJSON := []byte(`{invalid json}`)
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(invalidJSON))
@@ -214,6 +222,7 @@ func TestRefreshTokenFromRequest_InvalidJSON(t *testing.T) {
 
 // TestRefreshTokenFromRequest_InvalidToken ensures that an invalid refresh token causes an error.
 func TestRefreshTokenFromRequest_InvalidToken(t *testing.T) {
+	t.Parallel()
 	secretKey := &rsa.PublicKey{}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	// Set an invalid refresh token in cookie.
@@ -230,6 +239,7 @@ func TestRefreshTokenFromRequest_InvalidToken(t *testing.T) {
 
 // TestAuthTokenStrFromRequest_TokenFromCookie checks that the token is correctly returned from a non-empty cookie.
 func TestAuthTokenStrFromRequest_TokenFromCookie(t *testing.T) {
+	t.Parallel()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	expectedToken := "cookieToken"
 	req.AddCookie(&http.Cookie{
@@ -249,6 +259,7 @@ func TestAuthTokenStrFromRequest_TokenFromCookie(t *testing.T) {
 // TestAuthTokenStrFromRequest_EmptyCookieUsesHeader verifies that if the cookie value is empty,
 // the token is retrieved from the Authorization header.
 func TestAuthTokenStrFromRequest_EmptyCookieUsesHeader(t *testing.T) {
+	t.Parallel()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	// Set an empty token cookie.
 	req.AddCookie(&http.Cookie{
@@ -271,6 +282,7 @@ func TestAuthTokenStrFromRequest_EmptyCookieUsesHeader(t *testing.T) {
 // TestAuthTokenStrFromRequest_NoCookieUsesHeader checks that when no cookie is present,
 // the token is retrieved from the Authorization header.
 func TestAuthTokenStrFromRequest_NoCookieUsesHeader(t *testing.T) {
+	t.Parallel()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	expectedToken := "headerOnlyToken"
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
@@ -286,6 +298,7 @@ func TestAuthTokenStrFromRequest_NoCookieUsesHeader(t *testing.T) {
 
 // TestAuthTokenStrFromRequest_MissingToken verifies that an error is returned when both cookie and header are missing.
 func TestAuthTokenStrFromRequest_MissingToken(t *testing.T) {
+	t.Parallel()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 
 	token, err := scrypto.AuthTokenStrFromRequest(req)

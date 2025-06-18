@@ -13,6 +13,7 @@ import (
 )
 
 func TestGenerateHash(t *testing.T) {
+	t.Parallel()
 	t.Run("successful password hashing", func(t *testing.T) {
 		password := "mySecurePassword123" //nolint:goconst
 		hash, err := Hash(password, bcrypt.DefaultCost)
@@ -57,6 +58,7 @@ func TestGenerateHash(t *testing.T) {
 }
 
 func TestGenerateRandomPassword(t *testing.T) {
+	t.Parallel()
 	t.Run("zero length", func(t *testing.T) {
 		pass, err := GenerateRandomPassword(0)
 		require.NoError(t, err)
@@ -82,6 +84,7 @@ func TestGenerateRandomPassword(t *testing.T) {
 }
 
 func TestSetSignedCookie_Success(t *testing.T) {
+	t.Parallel()
 	secretKey := []byte("myVerySecretKey123")
 	originalValue := "cookieValue123"
 	cookie := http.Cookie{
@@ -110,6 +113,7 @@ func TestSetSignedCookie_Success(t *testing.T) {
 }
 
 func TestSetSignedCookie_ValueTooLong(t *testing.T) {
+	t.Parallel()
 	secretKey := []byte("myVerySecretKey123")
 	// Generate a very long cookie value.
 	longValue := strings.Repeat("a", 5000)
@@ -125,6 +129,7 @@ func TestSetSignedCookie_ValueTooLong(t *testing.T) {
 }
 
 func TestGetSignedCookie_InvalidSignature(t *testing.T) {
+	t.Parallel()
 	secretKey := []byte("myVerySecretKey123")
 	// Generate a valid cookie.
 	validCookie := http.Cookie{
@@ -155,6 +160,7 @@ func TestGetSignedCookie_InvalidSignature(t *testing.T) {
 }
 
 func TestGetSignedCookie_MissingCookie(t *testing.T) {
+	t.Parallel()
 	secretKey := []byte("myVerySecretKey123")
 	// Create a request without any cookies.
 	req := httptest.NewRequest("GET", "http://example.com", nil)
@@ -166,6 +172,7 @@ func TestGetSignedCookie_MissingCookie(t *testing.T) {
 }
 
 func TestReadCookieValue_invalidBase64(t *testing.T) {
+	t.Parallel()
 	// Create a request with an invalid base64 cookie value.
 	req := httptest.NewRequest("GET", "http://example.com", nil)
 	cookie := &http.Cookie{
@@ -182,6 +189,7 @@ func TestReadCookieValue_invalidBase64(t *testing.T) {
 }
 
 func TestGetSignedCookie_InvalidValueTooShort(t *testing.T) {
+	t.Parallel()
 	secretKey := []byte("secretkey")
 	// Create an HTTP request.
 	req := httptest.NewRequest("GET", "http://example.com", nil)

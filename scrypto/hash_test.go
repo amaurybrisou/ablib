@@ -7,6 +7,7 @@ import (
 )
 
 func TestHash_CostTooLow(t *testing.T) {
+	t.Parallel()
 	password := "samplepassword"
 	invalidCost := bcrypt.MinCost - 1
 
@@ -20,6 +21,7 @@ func TestHash_CostTooLow(t *testing.T) {
 }
 
 func TestHash_CostTooHigh(t *testing.T) {
+	t.Parallel()
 	password := "samplepassword"
 	invalidCost := bcrypt.MaxCost + 1
 
@@ -33,6 +35,7 @@ func TestHash_CostTooHigh(t *testing.T) {
 }
 
 func TestHash_EmptyPassword(t *testing.T) {
+	t.Parallel()
 	var emptyPassword string
 	cost := bcrypt.MinCost
 
@@ -46,6 +49,7 @@ func TestHash_EmptyPassword(t *testing.T) {
 }
 
 func TestHash_Success(t *testing.T) {
+	t.Parallel()
 	password := "correcthorsebatterystaple"
 	cost := bcrypt.DefaultCost
 
@@ -65,6 +69,7 @@ func TestHash_Success(t *testing.T) {
 }
 
 func TestValidateHash_EmptyInput(t *testing.T) {
+	t.Parallel()
 	// Both password and hashedPassword are empty.
 	if ValidateHash("", "") {
 		t.Error("expected false when both password and hashedPassword are empty")
@@ -86,6 +91,7 @@ func TestValidateHash_EmptyInput(t *testing.T) {
 }
 
 func TestValidateHash_Invalid(t *testing.T) {
+	t.Parallel()
 	password := "correctpassword"
 	wrongPassword := "wrongpassword"
 
@@ -100,6 +106,7 @@ func TestValidateHash_Invalid(t *testing.T) {
 }
 
 func TestValidateHash_Valid(t *testing.T) {
+	t.Parallel()
 	password := "correctpassword"
 
 	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -112,6 +119,7 @@ func TestValidateHash_Valid(t *testing.T) {
 	}
 }
 func TestGenerateRandomPassword_Length(t *testing.T) {
+	t.Parallel()
 	desiredLength := 16
 	password, err := GenerateRandomPassword(desiredLength)
 	if err != nil {
@@ -123,6 +131,7 @@ func TestGenerateRandomPassword_Length(t *testing.T) {
 }
 
 func TestGenerateRandomPassword_Unique(t *testing.T) {
+	t.Parallel()
 	desiredLength := 16
 	password1, err := GenerateRandomPassword(desiredLength)
 	if err != nil {
@@ -138,6 +147,7 @@ func TestGenerateRandomPassword_Unique(t *testing.T) {
 }
 
 func TestGenerateRandomPassword_ZeroLength(t *testing.T) {
+	t.Parallel()
 	password, err := GenerateRandomPassword(0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -10,6 +10,7 @@ import (
 )
 
 func TestSetSuccess(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	// Create a redis mock client and assign it to our RedisClient.
@@ -38,6 +39,7 @@ func TestSetSuccess(t *testing.T) {
 }
 
 func TestSetWithoutInitialization(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	// Create a RedisClient with a nil Client.
@@ -54,6 +56,7 @@ func TestSetWithoutInitialization(t *testing.T) {
 }
 
 func TestClose(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	// Test Close when Client is nil.
@@ -82,6 +85,7 @@ func TestClose(t *testing.T) {
 }
 
 func TestNewRedisClient_InvalidAddress(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	// Using an invalid address, NewRedisClient should return an error.

@@ -12,6 +12,7 @@ import (
 )
 
 func TestIsActivationClaims(t *testing.T) {
+	t.Parallel()
 	claims := map[string]any{
 		ClaimKeyPurpose.String(): ClaimPurposeActivation.String(),
 	}
@@ -25,6 +26,7 @@ func TestIsActivationClaims(t *testing.T) {
 }
 
 func TestIsAuthenticationClaims(t *testing.T) {
+	t.Parallel()
 	claims := map[string]any{
 		ClaimKeyPurpose.String(): ClaimPurposeAuthentication.String(),
 	}
@@ -38,6 +40,7 @@ func TestIsAuthenticationClaims(t *testing.T) {
 }
 
 func TestIsRefreshClaims(t *testing.T) {
+	t.Parallel()
 	claims := map[string]any{
 		ClaimKeyPurpose.String(): ClaimPurposeRefresh.String(),
 	}
@@ -51,6 +54,7 @@ func TestIsRefreshClaims(t *testing.T) {
 }
 
 func TestEDDSASignAndParse(t *testing.T) {
+	t.Parallel()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("failed to generate ed25519 key: %v", err)
@@ -94,6 +98,7 @@ func TestEDDSASignAndParse(t *testing.T) {
 }
 
 func TestRSASignAndParse(t *testing.T) {
+	t.Parallel()
 	rsaPriv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatalf("failed to generate RSA key: %v", err)
@@ -137,6 +142,7 @@ func TestRSASignAndParse(t *testing.T) {
 }
 
 func TestGetStringClaim_ExistingKey(t *testing.T) {
+	t.Parallel()
 	claims := jwt.MapClaims{
 		"key1": "value1",
 	}
@@ -151,6 +157,7 @@ func TestGetStringClaim_ExistingKey(t *testing.T) {
 }
 
 func TestGetStringClaim_KeyNotFound(t *testing.T) {
+	t.Parallel()
 	claims := jwt.MapClaims{
 		"key1": "value1",
 	}
@@ -165,6 +172,7 @@ func TestGetStringClaim_KeyNotFound(t *testing.T) {
 }
 
 func TestGetStringClaim_NonStringValuePanics(t *testing.T) {
+	t.Parallel()
 	claims := jwt.MapClaims{
 		"key2": 123, // non-string value
 	}
@@ -178,6 +186,7 @@ func TestGetStringClaim_NonStringValuePanics(t *testing.T) {
 }
 
 func TestGetInt32Claim_ExistingKey(t *testing.T) {
+	t.Parallel()
 	// Set a claim value that is an integer.
 	claims := jwt.MapClaims{
 		"intClaim": int32(42),
@@ -193,6 +202,7 @@ func TestGetInt32Claim_ExistingKey(t *testing.T) {
 }
 
 func TestGetInt32Claim_KeyNotFound(t *testing.T) {
+	t.Parallel()
 	// If the key is not present, assume the default value 0 is returned.
 	claims := jwt.MapClaims{
 		"anotherKey": int32(100),
@@ -208,6 +218,7 @@ func TestGetInt32Claim_KeyNotFound(t *testing.T) {
 }
 
 func TestGetInt32Claim_NonIntValuePanics(t *testing.T) {
+	t.Parallel()
 	// If the claim value is not an integer, we expect a panic.
 	claims := jwt.MapClaims{
 		"intClaim": "not an integer",
