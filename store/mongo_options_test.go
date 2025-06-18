@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 )
 
 // --- Mocks -------------------------------------------------------
@@ -74,7 +75,7 @@ func (m *mockDriver) Disconnect(ctx context.Context) error {
 	return args.Error(0)
 }
 
-func (m *mockDriver) Ping(ctx context.Context, rp *mongo.ReadPref) error {
+func (m *mockDriver) Ping(ctx context.Context, rp *readpref.ReadPref) error {
 	args := m.Called(ctx, rp)
 	return args.Error(0)
 }
