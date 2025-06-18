@@ -80,6 +80,7 @@ func (s CookieAuth) Logout(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Redirect(w, r, "/set", http.StatusSeeOther)
 		log.Ctx(r.Context()).Error().Err(err).Msg("cookies not found")
+		return
 	}
 	cookies.MaxAge = -1
 	http.SetCookie(w, cookies)
@@ -102,6 +103,7 @@ func (s CookieAuth) Middleware(successNext http.Handler) http.Handler {
 			default:
 				http.Error(w, "server error", http.StatusInternalServerError)
 			}
+			return
 		}
 
 		userID, err := uuid.Parse(userIDString)
