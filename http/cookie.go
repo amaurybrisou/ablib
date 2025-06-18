@@ -100,6 +100,8 @@ func (s CookieAuth) Middleware(successNext http.Handler) http.Handler {
 				http.Error(w, "cookie not found", http.StatusBadRequest)
 			case errors.Is(err, scrypto.ErrInvalidValue):
 				http.Error(w, "invalid cookie", http.StatusBadRequest)
+			case errors.Is(err, scrypto.ErrInvalidCookieName):
+				http.Error(w, "invalid cookie", http.StatusBadRequest)
 			default:
 				http.Error(w, "server error", http.StatusInternalServerError)
 			}
