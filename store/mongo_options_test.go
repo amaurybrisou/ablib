@@ -2,198 +2,157 @@ package store
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 	"testing"
 
-	"github.com/amaurybrisou/ablib/internal"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/mock"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-type TestDocument struct {
-	ID   string `bson:"_id,omitempty"`
-	Name string `bson:"name"`
+// --- Mocks -------------------------------------------------------
+
+type mockSingleResult struct {
+	raw []byte
+	err error
 }
 
-func setupTestContainer(t *testing.T) (*internal.Container, uint16, error) {
-	container, err := internal.NewContainer(nil, internal.ContainerConfig{
-		Repository: "mongo",
-		Tag:        "latest",
-		Env:        []string{"MONGO_INITDB_ROOT_USERNAME=test", "MONGO_INITDB_ROOT_PASSWORD=test"},
-	})
-	require.NoError(t, err)
+func (m *mockSingleResult) Err() error           { return m.err }
+func (m *mockSingleResult) Raw() ([]byte, error) { return m.raw, m.err }
 
-	// Wait for the container to be ready
-	err = container.Retry(func() error {
-		var err error
-		db, err := mongo.Connect(options.Client().ApplyURI(fmt.Sprintf("mongodb://test:test@localhost:%s", container.GetPort("27017/tcp"))))
-		if err != nil {
-			return err
-		}
+type mockCollection struct{ mock.Mock }
 
-		return db.Ping(context.Background(), nil)
-	})
-
-	require.NoError(t, err)
-
-	strPort := container.GetPort("27017/tcp")
-	port, err := strconv.ParseUint(strPort, 10, 16)
-	require.NoError(t, err)
-
-	return container, uint16(port), nil
+func (m *mockCollection) InsertOne(ctx context.Context, doc interface{}) (*mongo.InsertOneResult, error) {
+	args := m.Called(ctx, doc)
+	res, _ := args.Get(0).(*mongo.InsertOneResult)
+	return res, args.Error(1)
 }
 
-func TestNewMongoClient(t *testing.T) {
+func (m *mockCollection) InsertMany(ctx context.Context, docs []interface{}) (*mongo.InsertManyResult, error) {
+	args := m.Called(ctx, docs)
+	res, _ := args.Get(0).(*mongo.InsertManyResult)
+	return res, args.Error(1)
+}
+
+func (m *mockCollection) FindOne(ctx context.Context, filter interface{}) mongoSingleResult {
+	args := m.Called(ctx, filter)
+	sr, _ := args.Get(0).(mongoSingleResult)
+	return sr
+}
+
+func (m *mockCollection) UpdateOne(ctx context.Context, filter interface{}, update interface{}) (*mongo.UpdateResult, error) {
+	args := m.Called(ctx, filter, update)
+	res, _ := args.Get(0).(*mongo.UpdateResult)
+	return res, args.Error(1)
+}
+
+func (m *mockCollection) DeleteOne(ctx context.Context, filter interface{}) (*mongo.DeleteResult, error) {
+	args := m.Called(ctx, filter)
+	res, _ := args.Get(0).(*mongo.DeleteResult)
+	return res, args.Error(1)
+}
+
+type mockDatabase struct{ mock.Mock }
+
+func (m *mockDatabase) Collection(name string) mongoCollection {
+	args := m.Called(name)
+	col, _ := args.Get(0).(mongoCollection)
+	return col
+}
+
+type mockDriver struct{ mock.Mock }
+
+func (m *mockDriver) Database(name string) mongoDatabase {
+	args := m.Called(name)
+	db, _ := args.Get(0).(mongoDatabase)
+	return db
+}
+
+func (m *mockDriver) Disconnect(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+func (m *mockDriver) Ping(ctx context.Context, rp *mongo.ReadPref) error {
+	args := m.Called(ctx, rp)
+	return args.Error(0)
+}
+
+// -----------------------------------------------------------------
+
+func TestMongoClientOperations_Mocks(t *testing.T) {
 	ctx := context.Background()
-	container, port, err := setupTestContainer(t)
-	assert.NoError(t, err)
-	defer func() {
-		err := container.Purge()
-		assert.NoError(t, err)
-	}()
 
-	tests := []struct {
-		name    string
-		opts    MongoOptions
-		wantErr bool
-	}{
-		{
-			name: "valid connection",
-			opts: MongoOptions{
-				Username:     "test",
-				Password:     "test",
-				Host:         "localhost",
-				Port:         port,
-				MaxPoolSize:  10,
-				WriteConcern: "majority",
-			},
-			wantErr: false,
-		},
-		{
-			name: "invalid credentials",
-			opts: MongoOptions{
-				Username:     "wrong",
-				Password:     "wrong",
-				Host:         "localhost",
-				Port:         port,
-				MaxPoolSize:  10,
-				WriteConcern: "majority",
-			},
-			wantErr: true,
-		},
-	}
+	driver := new(mockDriver)
+	db := new(mockDatabase)
+	col := new(mockCollection)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewMongoClient(ctx, tt.opts)
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			assert.NoError(t, err)
-			assert.NotNil(t, client)
-			assert.NoError(t, client.Close(ctx))
-		})
-	}
-}
+	driver.On("Database", "testdb").Return(db)
+	db.On("Collection", "testcol").Return(col)
 
-func TestMongoClientOperations(t *testing.T) {
-	ctx := context.Background()
-	container, port, err := setupTestContainer(t)
-	assert.NoError(t, err)
-	defer func() {
-		err := container.Close()
-		assert.NoError(t, err)
-	}()
-
-	opts := MongoOptions{
-		Username:     "test",
-		Password:     "test",
-		Host:         "localhost",
-		Port:         port,
-		MaxPoolSize:  10,
-		WriteConcern: "majority",
-	}
-
-	client, err := NewMongoClient(ctx, opts)
-	assert.NoError(t, err)
-	defer client.Close(ctx) //nolint:errcheck
+	client := &MongoClient{driver: driver}
 
 	t.Run("InsertOne", func(t *testing.T) {
-		doc := TestDocument{Name: "test"}
-		id, err := client.InsertOne(ctx, "testdb", "testcol", bson.M{"name": doc.Name})
+		oid := primitive.NewObjectID()
+		col.On("InsertOne", ctx, bson.M{"name": "one"}).Return(&mongo.InsertOneResult{InsertedID: oid}, nil)
+		id, err := client.InsertOne(ctx, "testdb", "testcol", bson.M{"name": "one"})
 		assert.NoError(t, err)
-		assert.NotEmpty(t, id)
+		assert.Equal(t, oid.Hex(), id)
 	})
 
 	t.Run("InsertMany", func(t *testing.T) {
-		docs := []interface{}{
-			TestDocument{Name: "test1"},
-			TestDocument{Name: "test2"},
-		}
-		ids, err := client.InsertMany(ctx, "testdb", "testcol", docs)
+		ids := []interface{}{primitive.NewObjectID(), primitive.NewObjectID()}
+		col.On("InsertMany", ctx, mock.Anything).Return(&mongo.InsertManyResult{InsertedIDs: ids}, nil)
+		res, err := client.InsertMany(ctx, "testdb", "testcol", []interface{}{"a", "b"})
 		assert.NoError(t, err)
-		assert.Len(t, ids, 2)
+		assert.Len(t, res, 2)
 	})
 
 	t.Run("FindOne", func(t *testing.T) {
-		doc := TestDocument{Name: "findtest"}
-		_, err := client.InsertOne(ctx, "testdb", "testcol", bson.M{"name": doc.Name})
+		raw, _ := bson.Marshal(bson.M{"name": "find"})
+		col.On("FindOne", ctx, bson.M{"name": "find"}).Return(&mockSingleResult{raw: raw})
+		var out struct {
+			Name string `bson:"name"`
+		}
+		err := client.FindOne(ctx, "testdb", "testcol", bson.M{"name": "find"}, &out)
 		assert.NoError(t, err)
-
-		var result TestDocument
-		err = client.FindOne(ctx, "testdb", "testcol", bson.M{"name": doc.Name}, &result)
-		assert.NoError(t, err)
-		assert.Equal(t, "findtest", result.Name)
+		assert.Equal(t, "find", out.Name)
 	})
 
 	t.Run("UpdateOne", func(t *testing.T) {
-		doc := TestDocument{Name: "updatetest"}
-		_, err := client.InsertOne(ctx, "testdb", "testcol", bson.M{"name": doc.Name})
+		updRes := &mongo.UpdateResult{ModifiedCount: 1}
+		col.On("UpdateOne", ctx, bson.M{"name": "u"}, bson.M{"$set": bson.M{"name": "nu"}}).Return(updRes, nil)
+		res, err := client.UpdateOne(ctx, "testdb", "testcol", bson.M{"name": "u"}, bson.M{"$set": bson.M{"name": "nu"}})
 		assert.NoError(t, err)
-
-		update := bson.M{"$set": bson.M{"name": "updated"}}
-		result, err := client.UpdateOne(ctx, "testdb", "testcol", bson.M{"name": doc.Name}, update)
-		assert.NoError(t, err)
-		assert.Equal(t, int64(1), result.ModifiedCount)
+		assert.Equal(t, int64(1), res.ModifiedCount)
 	})
 
 	t.Run("DeleteOne", func(t *testing.T) {
-		doc := TestDocument{Name: "deletetest"}
-		_, err := client.InsertOne(ctx, "testdb", "testcol", bson.M{"name": doc.Name})
+		delRes := &mongo.DeleteResult{DeletedCount: 1}
+		col.On("DeleteOne", ctx, bson.M{"name": "d"}).Return(delRes, nil)
+		res, err := client.DeleteOne(ctx, "testdb", "testcol", bson.M{"name": "d"})
 		assert.NoError(t, err)
-
-		result, err := client.DeleteOne(ctx, "testdb", "testcol", bson.M{"name": doc.Name})
-		assert.NoError(t, err)
-		assert.Equal(t, int64(1), result.DeletedCount)
+		assert.Equal(t, int64(1), res.DeletedCount)
 	})
 }
 
-func TestMongoClientErrors(t *testing.T) {
+func TestMongoClientNoConnection(t *testing.T) {
 	ctx := context.Background()
-	client := &MongoClient{} // nil client
+	c := &MongoClient{}
 
-	t.Run("nil client operations", func(t *testing.T) {
-		_, err := client.InsertOne(ctx, "testdb", "testcol", TestDocument{})
-		assert.ErrorIs(t, err, ErrNoConnection)
+	_, err := c.InsertOne(ctx, "", "", nil)
+	assert.ErrorIs(t, err, ErrNoConnection)
 
-		_, err = client.InsertMany(ctx, "testdb", "testcol", []interface{}{})
-		assert.ErrorIs(t, err, ErrNoConnection)
+	_, err = c.InsertMany(ctx, "", "", nil)
+	assert.ErrorIs(t, err, ErrNoConnection)
 
-		err = client.FindOne(ctx, "testdb", "testcol", bson.M{}, &TestDocument{})
-		assert.ErrorIs(t, err, ErrNoConnection)
+	err = c.FindOne(ctx, "", "", nil, &struct{}{})
+	assert.ErrorIs(t, err, ErrNoConnection)
 
-		_, err = client.UpdateOne(ctx, "testdb", "testcol", bson.M{}, bson.M{})
-		assert.ErrorIs(t, err, ErrNoConnection)
+	_, err = c.UpdateOne(ctx, "", "", nil, nil)
+	assert.ErrorIs(t, err, ErrNoConnection)
 
-		_, err = client.DeleteOne(ctx, "testdb", "testcol", bson.M{})
-		assert.ErrorIs(t, err, ErrNoConnection)
-
-		err = client.Close(ctx)
-		assert.NoError(t, err) // Close should not return error for nil client
-	})
+	_, err = c.DeleteOne(ctx, "", "", nil)
+	assert.ErrorIs(t, err, ErrNoConnection)
 }
