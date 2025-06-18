@@ -31,79 +31,62 @@ func createTestContext(role coremodels.GatewayRole) context.Context {
 	return ctx
 }
 
-func TestIsAdminMiddleware_AllowsAdmin(t *testing.T) {
-	t.Parallel()
-	// Create a dummy admin user context.
-	ctx := createTestContext(coremodels.ADMIN)
-
-	// Create a request with our context.
-	req := httptest.NewRequest("GET", "http://example.com", nil)
-	req = req.WithContext(ctx)
-
-	// Create a response recorder.
-	rr := httptest.NewRecorder()
-
-	// Create a dummy next handler.
-	called := false
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK")) //nolint:errcheck,gosec
-	})
-
-	// Wrap the handler with the middleware.
-	handler := IsAdminMiddleware(next)
-
-	// Serve the request.
-	handler.ServeHTTP(rr, req)
-
-	if !called {
-		t.Error("expected next handler to be called for admin user")
-	}
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected status code %d, got %d", http.StatusOK, rr.Code)
-	}
-	if rr.Body.String() != "OK" {
-		t.Errorf("expected body %q, got %q", "OK", rr.Body.String())
-	}
+// createRequest builds a new GET request using the provided context.
+func createRequest(ctx context.Context) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "http://example.com", nil)
+	return req.WithContext(ctx)
 }
 
-func TestIsAdminMiddleware_RejectsNonAdmin(t *testing.T) {
-	t.Parallel()
-	// Create a dummy non-admin user context.
-	// Assuming a non-admin role is represented by something other than coremodels.ADMIN.
-	nonAdminRole := coremodels.GatewayRole("user")
-	ctx := createTestContext(nonAdminRole)
-
-	// Create a request with our context.
-	req := httptest.NewRequest("GET", "http://example.com", nil)
-	req = req.WithContext(ctx)
-
-	// Create a response recorder.
-	rr := httptest.NewRecorder()
-
-	// Create a dummy next handler.
-	called := false
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK")) //nolint:errcheck, gosec
-	})
-
-	// Wrap the handler with the middleware.
-	handler := IsAdminMiddleware(next)
-
-	// Serve the request.
-	handler.ServeHTTP(rr, req)
-
-	if called {
-		t.Error("expected next handler to NOT be called for non-admin user")
+func TestIsAdminMiddleware(t *testing.T) {
+	tests := []struct {
+		name           string
+		role           coremodels.GatewayRole
+		expectedStatus int
+		nextCalled     bool
+		expectedBody   string
+	}{
+		{
+			name:           "admin",
+			role:           coremodels.ADMIN,
+			expectedStatus: http.StatusOK,
+			nextCalled:     true,
+			expectedBody:   "OK",
+		},
+		{
+			name:           "non admin",
+			role:           coremodels.GatewayRole("user"),
+			expectedStatus: http.StatusForbidden,
+			nextCalled:     false,
+			expectedBody:   "Unauthorized\n",
+		},
 	}
-	if rr.Code != http.StatusForbidden {
-		t.Errorf("expected status code %d, got %d", http.StatusForbidden, rr.Code)
-	}
-	expectedBody := "Unauthorized\n"
-	if rr.Body.String() != expectedBody {
-		t.Errorf("expected body %q, got %q", expectedBody, rr.Body.String())
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := createTestContext(tt.role)
+			req := createRequest(ctx)
+			rr := httptest.NewRecorder()
+
+			called := false
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				called = true
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("OK")) //nolint:errcheck,gosec
+			})
+
+			IsAdminMiddleware(next).ServeHTTP(rr, req)
+
+			if called != tt.nextCalled {
+				t.Errorf("expected next called %v, got %v", tt.nextCalled, called)
+			}
+			if rr.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
+			}
+			if rr.Body.String() != tt.expectedBody {
+				t.Errorf("expected body %q, got %q", tt.expectedBody, rr.Body.String())
+			}
+		})
 	}
 }
