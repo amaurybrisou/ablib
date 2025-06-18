@@ -19,6 +19,7 @@ var (
 )
 
 func TestNewJWT(t *testing.T) {
+	t.Parallel()
 	uid := uuid.NewString()
 	companyID := uuid.NewString()
 
@@ -32,6 +33,7 @@ func TestNewJWT(t *testing.T) {
 }
 
 func TestParseToken(t *testing.T) {
+	t.Parallel()
 	uid := uuid.NewString()
 	companyID := uuid.NewString()
 
@@ -54,6 +56,7 @@ func TestParseToken(t *testing.T) {
 }
 
 func TestSignED25519(t *testing.T) {
+	t.Parallel()
 	uid := uuid.NewString()
 	companyID := uuid.NewString()
 
@@ -124,6 +127,7 @@ func generateRSAKey(_ *testing.T) (*rsa.PrivateKey, *rsa.PublicKey) {
 }
 
 func TestSignRSA(t *testing.T) {
+	t.Parallel()
 	uid := uuid.NewString()
 	companyID := uuid.NewString()
 
@@ -182,6 +186,7 @@ func TestSignRSA(t *testing.T) {
 }
 
 func TestValidateContextGRPC(t *testing.T) {
+	t.Parallel()
 	rsaPriv, rsaPub := generateRSAKey(t)
 
 	t.Run("missing metadata", func(t *testing.T) {
@@ -219,6 +224,7 @@ func TestValidateContextGRPC(t *testing.T) {
 	})
 }
 func TestParseRefreshToken(t *testing.T) {
+	t.Parallel()
 	// Generate an RSA key pair for testing.
 	rsaPriv, rsaPub := generateRSAKey(t)
 
@@ -282,6 +288,7 @@ func TestParseRefreshToken(t *testing.T) {
 
 // TestParseAuthTokenValid tests parsing a valid JWT token.
 func TestParseAuthTokenValid(t *testing.T) {
+	t.Parallel()
 	// Generate a new uid and companyID.
 	uid := uuid.NewString()
 	companyID := uuid.NewString()
@@ -310,6 +317,7 @@ func TestParseAuthTokenValid(t *testing.T) {
 
 // TestParseAuthTokenInvalid tests that parsing an invalid token returns an error.
 func TestParseAuthTokenInvalid(t *testing.T) {
+	t.Parallel()
 	// Prepare a public key JWK.
 	jwkPub := &JWK[ed25519.PrivateKey, ed25519.PublicKey]{PublicKey: publicED25519Key, Kid: "test-key"}
 

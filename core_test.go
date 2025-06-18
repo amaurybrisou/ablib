@@ -54,6 +54,7 @@ func (s CustomTestService) Stop(_ context.Context) error {
 }
 
 func TestCoreNoServiceError(t *testing.T) {
+	t.Parallel()
 	lcore := ablib.NewCore()
 	started, errChan := lcore.Start(context.Background())
 	require.Nil(t, started)
@@ -61,6 +62,7 @@ func TestCoreNoServiceError(t *testing.T) {
 }
 
 func TestCoreError(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 	lcore := ablib.NewCore(CustomTestService{startErr: true, done: make(chan struct{})})
@@ -71,6 +73,7 @@ func TestCoreError(t *testing.T) {
 }
 
 func TestCoreContextDeadlineError(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
 	defer cancel()
 	lcore := ablib.NewCore(CustomTestService{done: make(chan struct{})})
@@ -81,6 +84,7 @@ func TestCoreContextDeadlineError(t *testing.T) {
 }
 
 func TestCoreShutdown(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	lcore := ablib.NewCore(CustomTestService{startErr: false, done: make(chan struct{})})
@@ -92,6 +96,7 @@ func TestCoreShutdown(t *testing.T) {
 }
 
 func TestCoreShutdownError(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	lcore := ablib.NewCore(CustomTestService{startErr: false, stopErr: true, done: make(chan struct{})})
@@ -103,6 +108,7 @@ func TestCoreShutdownError(t *testing.T) {
 }
 
 func TestCoreShutdownContextDeadlineError(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
 	lcore := ablib.NewCore(CustomTestService{startErr: false, stopErr: true, done: make(chan struct{})})

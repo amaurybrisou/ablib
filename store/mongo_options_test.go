@@ -48,6 +48,7 @@ func setupTestContainer(t *testing.T) (*internal.Container, uint16, error) {
 }
 
 func TestNewMongoClient(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	container, port, err := setupTestContainer(t)
 	assert.NoError(t, err)
@@ -102,6 +103,7 @@ func TestNewMongoClient(t *testing.T) {
 }
 
 func TestMongoClientOperations(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	container, port, err := setupTestContainer(t)
 	assert.NoError(t, err)
@@ -174,6 +176,7 @@ func TestMongoClientOperations(t *testing.T) {
 }
 
 func TestMongoClientErrors(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	client := &MongoClient{} // nil client
 

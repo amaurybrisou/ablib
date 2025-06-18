@@ -32,6 +32,7 @@ func createTestContext(role coremodels.GatewayRole) context.Context {
 }
 
 func TestIsAdminMiddleware_AllowsAdmin(t *testing.T) {
+	t.Parallel()
 	// Create a dummy admin user context.
 	ctx := createTestContext(coremodels.ADMIN)
 
@@ -68,6 +69,7 @@ func TestIsAdminMiddleware_AllowsAdmin(t *testing.T) {
 }
 
 func TestIsAdminMiddleware_RejectsNonAdmin(t *testing.T) {
+	t.Parallel()
 	// Create a dummy non-admin user context.
 	// Assuming a non-admin role is represented by something other than coremodels.ADMIN.
 	nonAdminRole := coremodels.GatewayRole("user")
