@@ -22,9 +22,12 @@ var (
 	ErrDecodingRawResult = errors.New("error decoding raw result")
 )
 
+type connectFn func(...*options.ClientOptions) (*mongo.Client, error)
+
 type MongoClient struct {
 	addr string
 	*mongo.Client
+	connectFn connectFn
 }
 
 type MongoOptions struct {
@@ -38,7 +41,8 @@ type MongoOptions struct {
 
 func NewMongoClient(ctx context.Context, opts MongoOptions) (*MongoClient, error) {
 	r := &MongoClient{addr: fmt.Sprintf("mongodb://%s:%s@%s:%d/?maxPoolSize=%d&w=%s",
-		opts.Username, opts.Password, opts.Host, opts.Port, opts.MaxPoolSize, opts.WriteConcern)}
+		opts.Username, opts.Password, opts.Host, opts.Port, opts.MaxPoolSize, opts.WriteConcern),
+		connectFn: mongo.Connect}
 
 	err := r.start(ctx)
 	if err != nil {
@@ -60,7 +64,7 @@ func (r *MongoClient) start(ctx context.Context) error {
 	opts.SetConnectTimeout(30 * time.Second)
 	opts.SetTimeout(10 * time.Second)
 
-	client, err := mongo.Connect(opts)
+	client, err := r.connectFn(opts)
 	if err != nil {
 		log.Ctx(ctx).Error().Err(err).Msg("mongo client")
 		return err
