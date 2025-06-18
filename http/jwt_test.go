@@ -12,183 +12,138 @@ import (
 	"github.com/google/uuid"
 )
 
-// TestValidateJWTMiddleware_MissingToken checks that a request with no token returns 401.
-func TestValidateJWTMiddleware_MissingToken(t *testing.T) {
-	t.Parallel()
-	pubKey := &rsa.PublicKey{}
-	middleware := ValidateJWTMiddleware(
-		&scrypto.JWK[*rsa.PrivateKey, *rsa.PublicKey]{PublicKey: pubKey},
-	)
-
-	// nextHandler simply returns 200 if called.
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	handler := middleware(nextHandler)
-
+// helper to create a request with the Authorization header set when a token is
+// provided.
+func newJWTRequest(token string) *http.Request {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	// No header or cookie set.
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return req
+}
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+// helper to create a middleware handler with a provided parsing function. It
+// returns the handler and a pointer to a bool that records whether the next
+// handler has been called.
+func newJWTMiddleware(parse func(string) (*scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey], error)) (http.Handler, *bool) {
+	jwk := &scrypto.JWK[*rsa.PrivateKey, *rsa.PublicKey]{PublicKey: &rsa.PublicKey{}}
+	called := new(bool)
+	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { *called = true })
+	handler := ValidateJWTMiddleware(jwk, WithParseTokenFunc(parse))(next)
+	return handler, called
+}
+
+func TestValidateJWTMiddleware(t *testing.T) {
+	t.Parallel()
+	parseToken := func(tokenStr string) (*scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
+		if tokenStr == "valid" {
+			return &scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey]{Purpose: scrypto.ClaimPurposeAuthentication.String()}, nil
+		}
+		if tokenStr == "" {
+			return nil, scrypto.ErrInvalidToken
+		}
+		return nil, scrypto.ErrInvalidToken
+	}
+
+	tests := []struct {
+		name           string
+		token          string
+		expectedStatus int
+		nextCalled     bool
+	}{
+		{name: "missing token", token: "", expectedStatus: http.StatusUnauthorized, nextCalled: false},
+		{name: "invalid token", token: "invalid", expectedStatus: http.StatusUnauthorized, nextCalled: false},
+		{name: "valid token", token: "valid", expectedStatus: http.StatusOK, nextCalled: true},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			handler, called := newJWTMiddleware(parseToken)
+			req := newJWTRequest(tt.token)
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, rec.Code)
+			}
+			if *called != tt.nextCalled {
+				t.Errorf("expected next called %v, got %v", tt.nextCalled, *called)
+			}
+		})
 	}
 }
 
-// TestValidateJWTMiddleware_InvalidToken ensures that an invalid token leads to a 401 response.
-func TestValidateJWTMiddleware_InvalidToken(t *testing.T) {
-	t.Parallel()
-	pubKey := &rsa.PublicKey{}
-	middleware := ValidateJWTMiddleware(
-		&scrypto.JWK[*rsa.PrivateKey, *rsa.PublicKey]{PublicKey: pubKey},
-	)
-
-	nextHandlerCalled := false
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nextHandlerCalled = true
-		w.WriteHeader(http.StatusOK)
-	})
-
-	handler := middleware(nextHandler)
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	// Provide an invalid token.
-	req.Header.Set("Authorization", "Bearer invalid")
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+func TestWithHeaderJWT(t *testing.T) {
+	tests := []struct {
+		name  string
+		allow bool
+	}{
+		{name: "true", allow: true},
+		{name: "false", allow: false},
 	}
-	if nextHandlerCalled {
-		t.Errorf("next handler should not be called on invalid token")
-	}
-}
 
-func TestWithHeaderJWT_True(t *testing.T) {
-	t.Parallel()
-	config := middlewareConfig[*rsa.PrivateKey, *rsa.PublicKey]{}
-	opt := WithHeaderJWT[*rsa.PrivateKey, *rsa.PublicKey](true)
-	opt(&config)
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			conf := middlewareConfig[*rsa.PrivateKey, *rsa.PublicKey]{}
+			if !tt.allow {
+				conf.allowHeaderJWT = true
+			}
 
-	if !config.allowHeaderJWT {
-		t.Error("WithHeaderJWT(true) did not set AllowHeaderJWT to true")
-	}
-}
+			WithHeaderJWT[*rsa.PrivateKey, *rsa.PublicKey](tt.allow)(&conf)
 
-func TestWithHeaderJWT_False(t *testing.T) {
-	t.Parallel()
-	conf := middlewareConfig[*rsa.PrivateKey, *rsa.PublicKey]{}
-	// Change config so that it is not already false.
-	conf.allowHeaderJWT = true
-
-	opt := WithHeaderJWT[*rsa.PrivateKey, *rsa.PublicKey](false)
-	opt(&conf)
-
-	if conf.allowHeaderJWT {
-		t.Error("WithHeaderJWT(false) did not set AllowHeaderJWT to false")
+			if conf.allowHeaderJWT != tt.allow {
+				t.Errorf("expected allowHeaderJWT %v, got %v", tt.allow, conf.allowHeaderJWT)
+			}
+		})
 	}
 }
 
 // TestDefaultConfig_EmptyToken ensures that an empty token returns scrypto.ErrInvalidToken.
-func TestDefaultConfig_EmptyToken(t *testing.T) {
-	t.Parallel()
-	// Create a dummy jwk using a dummy rsa public key.
-	dummyJWK := &scrypto.JWK[*rsa.PrivateKey, *rsa.PublicKey]{
-		PublicKey: &rsa.PublicKey{},
-	}
+func TestDefaultConfig(t *testing.T) {
+	dummy := &scrypto.JWK[*rsa.PrivateKey, *rsa.PublicKey]{PublicKey: &rsa.PublicKey{}}
 
-	// Use the default config.
-	config := defaultConfig(dummyJWK)
-
-	errExpected := scrypto.ErrInvalidToken
-	_, err := config.parseTokenFunc("")
-	if !errors.Is(err, errExpected) {
-		t.Errorf("expected error %v, got %v", errExpected, err)
-	}
-}
-
-// TestDefaultConfig_InvalidPurpose tests that a token with wrong purpose returns scrypto.ErrInvalidPurpose.
-func TestDefaultConfig_InvalidPurpose(t *testing.T) {
-	t.Parallel()
-	// Override with mock implementation
-	parseTokenFunc := func(tokenStr string) (*scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
+	invalidPurpose := func(string) (*scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
 		return nil, scrypto.ErrInvalidPurpose
 	}
-
-	dummyJWK := scrypto.JWK[*rsa.PrivateKey, *rsa.PublicKey]{
-		PublicKey: &rsa.PublicKey{},
-	}
-	config := defaultConfig(&dummyJWK, WithParseTokenFunc(parseTokenFunc))
-
-	_, err := config.parseTokenFunc("some-token")
-	if !errors.Is(err, scrypto.ErrInvalidPurpose) {
-		t.Errorf("expected error %v, got %v", scrypto.ErrInvalidPurpose, err)
-	}
-}
-
-// TestDefaultConfig_ValidToken verifies that a valid token is properly parsed.
-func TestDefaultConfig_ValidToken(t *testing.T) {
-	t.Parallel()
-	parseTokenFunc := func(tokenStr string) (*scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
-		// If the token string is "valid", return a token with the correct purpose.
+	validParse := func(tokenStr string) (*scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
 		if tokenStr == "valid" {
-			return &scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey]{
-				Purpose: scrypto.ClaimPurposeAuthentication.String(),
-			}, nil
+			return &scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey]{Purpose: scrypto.ClaimPurposeAuthentication.String()}, nil
 		}
 		return nil, scrypto.ErrInvalidToken
 	}
 
-	dummyJWK := scrypto.JWK[*rsa.PrivateKey, *rsa.PublicKey]{
-		PublicKey: &rsa.PublicKey{},
+	tests := []struct {
+		name      string
+		config    *middlewareConfig[*rsa.PrivateKey, *rsa.PublicKey]
+		token     string
+		expectErr error
+	}{
+		{name: "empty token", config: defaultConfig(dummy), token: "", expectErr: scrypto.ErrInvalidToken},
+		{name: "invalid purpose", config: defaultConfig(dummy, WithParseTokenFunc(invalidPurpose)), token: "some-token", expectErr: scrypto.ErrInvalidPurpose},
+		{name: "valid token", config: defaultConfig(dummy, WithParseTokenFunc(validParse)), token: "valid", expectErr: nil},
 	}
-	config := defaultConfig(&dummyJWK, WithParseTokenFunc(parseTokenFunc))
 
-	token, err := config.parseTokenFunc("valid")
-	if err != nil {
-		t.Errorf("expected no error, got %v", err)
-	}
-	if token == nil {
-		t.Errorf("expected a valid token, got nil")
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tok, err := tt.config.parseTokenFunc(tt.token)
+			if !errors.Is(err, tt.expectErr) {
+				t.Errorf("expected error %v, got %v", tt.expectErr, err)
+			}
+			if tt.expectErr == nil && tok == nil {
+				t.Error("expected token, got nil")
+			}
+		})
 	}
 }
 
 // Optional: A simple integration test using defaultConfig through the middleware.
-func TestValidateJWTMiddleware_WithValidToken(t *testing.T) {
-	t.Parallel()
-	parseTokenFunc := func(tokenStr string) (*scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey], error) {
-		if tokenStr == "valid-token" {
-			return &scrypto.JWT[*rsa.PrivateKey, *rsa.PublicKey]{
-				Purpose: scrypto.ClaimPurposeAuthentication.String(),
-			}, nil
-		}
-		return nil, scrypto.ErrInvalidToken
-	}
-
-	dummyJWK := scrypto.JWK[*rsa.PrivateKey, *rsa.PublicKey]{
-		PublicKey: &rsa.PublicKey{},
-	}
-	middleware := ValidateJWTMiddleware(&dummyJWK, WithParseTokenFunc(parseTokenFunc))
-
-	nextHandlerCalled := false
-	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nextHandlerCalled = true
-	})
-
-	handler := middleware(nextHandler)
-
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("Authorization", "Bearer valid-token")
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if !nextHandlerCalled {
-		t.Errorf("expected next handler to be called for a valid token")
-	}
-}
 
 func BenchmarkValidateJWTMiddleware(b *testing.B) {
 	priv, pub, _ := scrypto.GenerateRSAKeys(2048)
