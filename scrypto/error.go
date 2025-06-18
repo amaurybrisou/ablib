@@ -40,4 +40,6 @@ var (
 	ErrValueTooLong      = &JWTError{Code: "value_too_long", Message: "cookie value too long"}
 	ErrInvalidValue      = &JWTError{Code: "invalid_value", Message: "invalid cookie value"}
 	ErrInvalidCookieName = &JWTError{Code: "invalid_cookie_name", Message: "invalid cookie name, must not be empty"}
+
+	ErrUnsupportedKeyType = &JWTError{Code: "unsupported_key_type", Message: "unsupported key type"}
 )

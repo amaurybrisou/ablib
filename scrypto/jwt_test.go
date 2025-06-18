@@ -2,7 +2,7 @@ package scrypto
 
 import (
 	"context"
-	"crypto/rand"
+	"crypto/ed25519"
 	"crypto/rsa"
 	"testing"
 	"time"
@@ -12,16 +12,20 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+// Setup variables for keys
 var (
-	privateKey, _ = ParseED25519PrivateKeyFromB64("LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1DNENBUUF3QlFZREsyVndCQ0lFSUxVNzZyNjBqNlovUWlXRFZiYnYrUUIyL3N5WUFHLzY5QWxydWJIcWllVGsKLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQo=")
-	publicKey, _  = ParseED25519PublicKeyFromB64("LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUNvd0JRWURLMlZ3QXlFQU13VXZQUDFQMmJMZFIwZ2tIV1hGY0Q3WlR6Z0x1MkcwRXArVXEvRUt1VUk9Ci0tLS0tRU5EIFBVQkxJQyBLRVktLS0tLQo=")
+	privateED25519Key, publicED25519Key, _ = GenerateED25519Keys()
+	rsaPriv, rsaPub                        = generateRSAKey(nil)
 )
 
 func TestNewJWT(t *testing.T) {
 	uid := uuid.NewString()
 	companyID := uuid.NewString()
 
-	jwt := NewJWT(JWK{PrivateKey: privateKey}, "test-issuer", uid, companyID)
+	privateED25519Key, _, err := GenerateED25519Keys()
+	require.NoError(t, err)
+
+	jwt := NewJWT(&JWK[ed25519.PrivateKey, ed25519.PublicKey]{PrivateKey: privateED25519Key, Kid: "test-key"}, "test-issuer", uid, companyID)
 
 	require.Equal(t, uid, jwt.UID)
 	require.Equal(t, "test-issuer", jwt.Iss)
@@ -31,69 +35,150 @@ func TestParseToken(t *testing.T) {
 	uid := uuid.NewString()
 	companyID := uuid.NewString()
 
-	token := NewJWT(JWK{PrivateKey: privateKey}, "test-issuer", uid, companyID)
+	privateED25519Key, publicED25519Key, err := GenerateED25519Keys()
+	require.NoError(t, err)
+
+	token := NewJWT(&JWK[ed25519.PrivateKey, ed25519.PublicKey]{PrivateKey: privateED25519Key, Kid: "test-key"}, "test-issuer", uid, companyID)
 
 	exp := time.Now().Add(time.Hour).Unix()
-	tokenString, _, err := token.SignED25519(time.Unix(exp, 0),
+	tokenString, _, err := token.signED25519(time.Unix(exp, 0),
 		map[AllowedClaimKeys]any{
 			ClaimKeyPurpose: ClaimPurposeAuthentication,
 		})
 	require.NoError(t, err)
 
-	parsedJWT, err := ParseTokenED25519(tokenString, publicKey)
+	parsedJWT, err := ParseAuthTokenED25519(tokenString, publicED25519Key)
 	require.NoError(t, err)
 	require.Equal(t, uid, parsedJWT.UID)
 	require.Equal(t, "test-issuer", parsedJWT.Iss)
 }
 
-func TestSign(t *testing.T) {
+func TestSignED25519(t *testing.T) {
 	uid := uuid.NewString()
 	companyID := uuid.NewString()
 
 	t.Run("not expired", func(t *testing.T) {
-		token := NewJWT(JWK{PrivateKey: privateKey}, "test-issuer", uid, companyID)
+		privKey, pubKey, err := GenerateED25519Keys()
+		require.NoError(t, err)
 
-		// Set expiration to 1 hour from now
+		token := NewJWT(&JWK[ed25519.PrivateKey, ed25519.PublicKey]{PrivateKey: privKey, Kid: "test-key"}, "test-issuer", uid, companyID)
+
 		exp := time.Now().Add(time.Hour)
-
-		tokenString, _, err := token.SignED25519(exp, map[AllowedClaimKeys]any{
+		tokenString, _, err := token.signED25519(exp, map[AllowedClaimKeys]any{
 			ClaimKeyPurpose: ClaimPurposeAuthentication,
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, tokenString)
 
-		// Verify token
-		parsedToken, err := ParseTokenED25519(tokenString, publicKey)
+		parsedToken, err := ParseAuthTokenED25519(tokenString, pubKey)
 		require.NoError(t, err)
-
 		require.Equal(t, uid, parsedToken.UID)
 	})
 
+	t.Run("Invalid Purpose", func(t *testing.T) {
+		privKey, pubKey, err := GenerateED25519Keys()
+		require.NoError(t, err)
+
+		token := NewJWT(&JWK[ed25519.PrivateKey, ed25519.PublicKey]{PrivateKey: privKey, Kid: "test-key"}, "test-issuer", uid, companyID)
+
+		exp := time.Now().Add(time.Hour)
+		tokenString, _, err := token.signED25519(exp, map[AllowedClaimKeys]any{
+			ClaimKeyPurpose: ClaimPurposeRefresh,
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, tokenString)
+
+		parsedToken, err := ParseAuthTokenED25519(tokenString, pubKey)
+		require.Error(t, err)
+		require.Equal(t, ErrInvalidPurpose, err)
+		require.Nil(t, parsedToken)
+	})
+
 	t.Run("expired", func(t *testing.T) {
-		token := NewJWT(JWK{PrivateKey: privateKey}, "test-issuer", uid, companyID)
+		privKey, pubKey, err := GenerateED25519Keys()
+		require.NoError(t, err)
 
-		// Set expiration to 1 hour from now
+		token := NewJWT(&JWK[ed25519.PrivateKey, ed25519.PublicKey]{PrivateKey: privKey, Kid: "test-key"}, "test-issuer", uid, companyID)
+
 		exp := time.Now().Add(-time.Hour)
-
-		tokenString, _, err := token.SignED25519(exp, map[AllowedClaimKeys]any{
+		tokenString, _, err := token.signED25519(exp, map[AllowedClaimKeys]any{
 			ClaimKeyPurpose: ClaimPurposeAuthentication,
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, tokenString)
 
-		// Verify token
-		parsedToken, err := ParseTokenED25519(tokenString, publicKey)
-		require.Error(t, err, ErrExpiredToken)
-
+		parsedToken, err := ParseAuthTokenED25519(tokenString, pubKey)
+		require.Error(t, err)
+		require.Equal(t, "token has invalid claims: token is expired", err.Error())
 		require.Nil(t, parsedToken)
 	})
 }
 
 // generateRSAKey creates a new RSA key pair for testing.
-func generateRSAKey(t *testing.T) (*rsa.PrivateKey, *rsa.PublicKey) {
-	rsaPriv, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	return rsaPriv, &rsaPriv.PublicKey
+func generateRSAKey(_ *testing.T) (*rsa.PrivateKey, *rsa.PublicKey) {
+	priv, pub, err := GenerateRSAKeys(2048)
+	if err != nil {
+		panic(err) // In test setup code, panicking is acceptable
+	}
+	return priv, pub
+}
+
+func TestSignRSA(t *testing.T) {
+	uid := uuid.NewString()
+	companyID := uuid.NewString()
+
+	t.Run("not expired", func(t *testing.T) {
+		rsaPriv, rsaPub := generateRSAKey(nil)
+		token := NewJWT(&JWK[*rsa.PrivateKey, *rsa.PublicKey]{KeyType: RSA, PrivateKey: rsaPriv, Kid: "test-key"}, "test-issuer", uid, companyID)
+
+		exp := time.Now().Add(time.Hour)
+		tokenString, _, err := token.signRSA(exp, map[AllowedClaimKeys]any{
+			ClaimKeyPurpose: ClaimPurposeAuthentication,
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, tokenString)
+
+		parsedToken, err := ParseAuthTokenRSA(tokenString, rsaPub)
+		require.NoError(t, err)
+		require.Equal(t, uid, parsedToken.UID)
+	})
+
+	t.Run("Invalid Purpose", func(t *testing.T) {
+		token := NewJWT(&JWK[*rsa.PrivateKey, *rsa.PublicKey]{KeyType: RSA, PrivateKey: rsaPriv, Kid: "test-key"}, "test-issuer", uid, companyID)
+
+		// Set expiration to 1 hour from now
+		exp := time.Now().Add(time.Hour)
+
+		tokenString, _, err := token.signRSA(exp, map[AllowedClaimKeys]any{
+			ClaimKeyPurpose: ClaimPurposeRefresh,
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, tokenString)
+
+		// Verify token
+		parsedToken, err := ParseAuthTokenRSA(tokenString, rsaPub)
+		require.Error(t, err, ErrInvalidPurpose)
+		require.Nil(t, parsedToken)
+	})
+
+	t.Run("expired", func(t *testing.T) {
+		token := NewJWT(&JWK[*rsa.PrivateKey, *rsa.PublicKey]{KeyType: RSA, PrivateKey: rsaPriv, Kid: "test-key"}, "test-issuer", uid, companyID)
+
+		// Set expiration to 1 hour from now
+		exp := time.Now().Add(-time.Hour)
+
+		tokenString, _, err := token.signRSA(exp, map[AllowedClaimKeys]any{
+			ClaimKeyPurpose: ClaimPurposeAuthentication,
+		})
+		require.NoError(t, err)
+		require.NotEmpty(t, tokenString)
+
+		// Verify token
+		parsedToken, err := ParseAuthTokenRSA(tokenString, rsaPub)
+		require.Error(t, err, ErrExpiredToken)
+
+		require.Nil(t, parsedToken)
+	})
 }
 
 func TestValidateContextGRPC(t *testing.T) {
@@ -118,9 +203,9 @@ func TestValidateContextGRPC(t *testing.T) {
 		companyID := uuid.NewString()
 
 		// Create a JWT using RSA signing.
-		jwtInstance := NewJWT(JWK{PrivateKey: rsaPriv, Kid: "test-key"}, "test-issuer", uid, companyID)
+		jwtInstance := NewJWT(&JWK[*rsa.PrivateKey, *rsa.PublicKey]{KeyType: RSA, PrivateKey: rsaPriv, Kid: "test-key"}, "test-issuer", uid, companyID)
 		exp := time.Now().Add(time.Hour)
-		tokenString, _, err := jwtInstance.Sign(exp, map[AllowedClaimKeys]any{
+		tokenString, _, err := jwtInstance.signRSA(exp, map[AllowedClaimKeys]any{
 			ClaimKeyPurpose: ClaimPurposeAuthentication,
 		})
 		require.NoError(t, err)
@@ -142,15 +227,15 @@ func TestParseRefreshToken(t *testing.T) {
 		companyID := uuid.NewString()
 
 		// Create a JWT and sign it with RSA using a refresh purpose.
-		jwtInstance := NewJWT(JWK{PrivateKey: rsaPriv, Kid: "test-key"}, "test-issuer", uid, companyID)
+		jwtInstance := NewJWT(&JWK[*rsa.PrivateKey, *rsa.PublicKey]{KeyType: RSA, PrivateKey: rsaPriv, Kid: "test-key"}, "test-issuer", uid, companyID)
 		exp := time.Now().Add(time.Hour)
-		tokenString, _, err := jwtInstance.Sign(exp, map[AllowedClaimKeys]any{
+		tokenString, _, err := jwtInstance.signRSA(exp, map[AllowedClaimKeys]any{
 			ClaimKeyPurpose: ClaimPurposeRefresh,
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, tokenString)
 
-		parsedJWT, err := ParseRefreshToken(tokenString, rsaPub)
+		parsedJWT, err := parseRefreshTokenRSA(tokenString, rsaPub)
 		require.NoError(t, err)
 		require.Equal(t, "test-issuer", parsedJWT.Iss)
 		require.Equal(t, ClaimPurposeRefresh.String(), parsedJWT.Purpose)
@@ -162,15 +247,15 @@ func TestParseRefreshToken(t *testing.T) {
 
 		// Create a JWT token but sign it with an authentication purpose.
 		// This should fail when parsing as a refresh token.
-		jwtInstance := NewJWT(JWK{PrivateKey: rsaPriv, Kid: "test-key"}, "test-issuer", uid, companyID)
+		jwtInstance := NewJWT(&JWK[*rsa.PrivateKey, *rsa.PublicKey]{KeyType: RSA, PrivateKey: rsaPriv, Kid: "test-key"}, "test-issuer", uid, companyID)
 		exp := time.Now().Add(time.Hour)
-		tokenString, _, err := jwtInstance.Sign(exp, map[AllowedClaimKeys]any{
+		tokenString, _, err := jwtInstance.signRSA(exp, map[AllowedClaimKeys]any{
 			ClaimKeyPurpose: ClaimPurposeAuthentication,
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, tokenString)
 
-		parsedJWT, err := ParseRefreshToken(tokenString, rsaPub)
+		parsedJWT, err := parseRefreshTokenRSA(tokenString, rsaPub)
 		require.Error(t, err)
 		require.Nil(t, parsedJWT)
 	})
@@ -180,17 +265,57 @@ func TestParseRefreshToken(t *testing.T) {
 		companyID := uuid.NewString()
 
 		// Create a JWT token with a refresh purpose but an expiration time in the past.
-		jwtInstance := NewJWT(JWK{PrivateKey: rsaPriv, Kid: "test-key"}, "test-issuer", uid, companyID)
+		jwtInstance := NewJWT(&JWK[*rsa.PrivateKey, *rsa.PublicKey]{KeyType: RSA, PrivateKey: rsaPriv, Kid: "test-key"}, "test-issuer", uid, companyID)
 		exp := time.Now().Add(-time.Hour)
-		tokenString, _, err := jwtInstance.Sign(exp, map[AllowedClaimKeys]any{
+		tokenString, _, err := jwtInstance.signRSA(exp, map[AllowedClaimKeys]any{
 			ClaimKeyPurpose: ClaimPurposeRefresh,
 		})
 		require.NoError(t, err)
 		require.NotEmpty(t, tokenString)
 
-		parsedJWT, err := ParseRefreshToken(tokenString, rsaPub)
+		parsedJWT, err := parseRefreshTokenRSA(tokenString, rsaPub)
 		// Expect an error because the token is expired.
 		require.Error(t, err)
 		require.Nil(t, parsedJWT)
 	})
+}
+
+// TestParseAuthTokenValid tests parsing a valid JWT token.
+func TestParseAuthTokenValid(t *testing.T) {
+	// Generate a new uid and companyID.
+	uid := uuid.NewString()
+	companyID := uuid.NewString()
+
+	// Construct a JWK for signing (private key) and for verifying (public key).
+	jwkPriv := &JWK[ed25519.PrivateKey, ed25519.PublicKey]{PrivateKey: privateED25519Key, Kid: "test-key"}
+	jwtInstance := NewJWT(jwkPriv, "test-issuer", uid, companyID)
+
+	// Sign the token with an expiration 1 hour in the future.
+	exp := time.Now().Add(time.Hour)
+	tokenString, _, err := jwtInstance.signED25519(exp, map[AllowedClaimKeys]any{
+		ClaimKeyPurpose: ClaimPurposeAuthentication,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, tokenString)
+
+	// Prepare a public key JWK for parsing.
+	jwkPub := &JWK[ed25519.PrivateKey, ed25519.PublicKey]{PublicKey: publicED25519Key, Kid: "test-key"}
+
+	parsedJWT, err := ParseAuthToken(tokenString, jwkPub)
+	require.NoError(t, err)
+	require.NotNil(t, parsedJWT)
+	require.Equal(t, uid, parsedJWT.UID)
+	require.Equal(t, "test-issuer", parsedJWT.Iss)
+}
+
+// TestParseAuthTokenInvalid tests that parsing an invalid token returns an error.
+func TestParseAuthTokenInvalid(t *testing.T) {
+	// Prepare a public key JWK.
+	jwkPub := &JWK[ed25519.PrivateKey, ed25519.PublicKey]{PublicKey: publicED25519Key, Kid: "test-key"}
+
+	// Attempt to parse an invalid token string.
+	invalidToken := "this.is.not.a.valid.token"
+	parsedJWT, err := ParseAuthToken(invalidToken, jwkPub)
+	require.Error(t, err)
+	require.Nil(t, parsedJWT)
 }

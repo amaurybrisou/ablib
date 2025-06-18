@@ -56,10 +56,13 @@ func TestEDDSASignAndParse(t *testing.T) {
 		t.Fatalf("failed to generate ed25519 key: %v", err)
 	}
 
-	jwk := JWK{
-		Kid:        "test-ed25519",
-		PrivateKey: priv,
-	}
+	jwk := NewJWK(
+		ED25519,
+		priv,
+		pub,
+		"EdDSA",
+		"test-ed25519",
+	)
 
 	issuer := "test-issuer-ed25519"
 	bareJWT := NewBareJWT(jwk, issuer)
@@ -70,7 +73,7 @@ func TestEDDSASignAndParse(t *testing.T) {
 	}
 	exp := time.Now().Add(1 * time.Hour)
 
-	tokenStr, jti, err := bareJWT.SignWithClaimsEDDSA(customClaims, exp)
+	tokenStr, jti, err := bareJWT.SignWithClaims(customClaims, exp)
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
@@ -78,7 +81,7 @@ func TestEDDSASignAndParse(t *testing.T) {
 		t.Error("expected non-empty token string and jti")
 	}
 
-	parsedJWT, err := ParseBareJWTED25519(tokenStr, pub, ClaimKeyPurpose, ClaimKeyNonce)
+	parsedJWT, err := ParseBareJWT(tokenStr, jwk, ClaimKeyPurpose, ClaimKeyNonce)
 	if err != nil {
 		t.Fatalf("failed to parse token: %v", err)
 	}
@@ -96,10 +99,13 @@ func TestRSASignAndParse(t *testing.T) {
 		t.Fatalf("failed to generate RSA key: %v", err)
 	}
 
-	jwk := JWK{
-		Kid:        "test-rsa",
-		PrivateKey: rsaPriv,
-	}
+	jwk := NewJWK(
+		RSA,
+		rsaPriv,
+		&rsaPriv.PublicKey,
+		"RS256",
+		"test-rsa",
+	)
 
 	issuer := "test-issuer-rsa"
 	bareJWT := NewBareJWT(jwk, issuer)
@@ -118,7 +124,7 @@ func TestRSASignAndParse(t *testing.T) {
 		t.Error("expected non-empty token string and jti")
 	}
 
-	parsedJWT, err := ParseBareJWTRSA(tokenStr, &rsaPriv.PublicKey, ClaimKeyPurpose, ClaimKeyUID)
+	parsedJWT, err := ParseBareJWT(tokenStr, jwk, ClaimKeyPurpose, ClaimKeyUID)
 	if err != nil {
 		t.Fatalf("failed to parse token: %v", err)
 	}
@@ -134,7 +140,7 @@ func TestGetStringClaim_ExistingKey(t *testing.T) {
 	claims := jwt.MapClaims{
 		"key1": "value1",
 	}
-	bareJWT := BareJWT{
+	bareJWT := BareJWT[ed25519.PrivateKey, ed25519.PublicKey]{
 		MapClaims: claims,
 	}
 
@@ -148,7 +154,7 @@ func TestGetStringClaim_KeyNotFound(t *testing.T) {
 	claims := jwt.MapClaims{
 		"key1": "value1",
 	}
-	bareJWT := BareJWT{
+	bareJWT := BareJWT[ed25519.PrivateKey, ed25519.PublicKey]{
 		MapClaims: claims,
 	}
 
@@ -162,7 +168,7 @@ func TestGetStringClaim_NonStringValuePanics(t *testing.T) {
 	claims := jwt.MapClaims{
 		"key2": 123, // non-string value
 	}
-	bareJWT := BareJWT{
+	bareJWT := BareJWT[ed25519.PrivateKey, ed25519.PublicKey]{
 		MapClaims: claims,
 	}
 
@@ -176,7 +182,7 @@ func TestGetInt32Claim_ExistingKey(t *testing.T) {
 	claims := jwt.MapClaims{
 		"intClaim": int32(42),
 	}
-	bareJWT := BareJWT{
+	bareJWT := BareJWT[ed25519.PrivateKey, ed25519.PublicKey]{
 		MapClaims: claims,
 	}
 
@@ -191,7 +197,7 @@ func TestGetInt32Claim_KeyNotFound(t *testing.T) {
 	claims := jwt.MapClaims{
 		"anotherKey": int32(100),
 	}
-	bareJWT := BareJWT{
+	bareJWT := BareJWT[ed25519.PrivateKey, ed25519.PublicKey]{
 		MapClaims: claims,
 	}
 
@@ -206,7 +212,7 @@ func TestGetInt32Claim_NonIntValuePanics(t *testing.T) {
 	claims := jwt.MapClaims{
 		"intClaim": "not an integer",
 	}
-	bareJWT := BareJWT{
+	bareJWT := BareJWT[ed25519.PrivateKey, ed25519.PublicKey]{
 		MapClaims: claims,
 	}
 
