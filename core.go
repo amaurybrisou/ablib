@@ -72,8 +72,7 @@ func hasServiceErrors(ctx context.Context, errChans <-chan <-chan error) <-chan 
 					return
 				}
 				if err != nil {
-					// log.Ctx(ctx).Debug().Msg("error starting")
-					errorEncountered <- err
+					errorEncountered <- err // Forward the error
 					return
 				}
 			case <-ctx.Done():
@@ -93,10 +92,9 @@ func hasServiceErrors(ctx context.Context, errChans <-chan <-chan error) <-chan 
 func (c *Core) Start(ctx context.Context) (<-chan struct{}, <-chan error) {
 	log.Ctx(ctx).Info().Msg("starting backend")
 	if len(c.startFuncs) == 0 {
-		errChan := make(chan error)
-		go func() {
-			errChan <- ErrNoService
-		}()
+		errChan := make(chan error, 1) // Initialize error channel with capacity of 1
+		errChan <- ErrNoService        // Directly send the error
+		close(errChan)                 // Close the channel after sending the error
 		return nil, errChan
 	}
 
@@ -163,10 +161,9 @@ func aggChan[T any](ctx context.Context, chans <-chan (<-chan T)) <-chan T {
 		defer wg.Done()
 		select {
 		case c, ok := <-cc: // cc must be closed explicitly by its creator.
-			if !ok {
-				return
+			if ok {
+				outputChan <- c // Forward received channel data
 			}
-			outputChan <- c
 		case <-ctx.Done():
 			return
 		}
